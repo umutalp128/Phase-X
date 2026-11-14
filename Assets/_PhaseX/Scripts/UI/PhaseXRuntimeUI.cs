@@ -1,0 +1,732 @@
+using System.Collections.Generic;
+using System.Linq;
+using UnityEngine;
+
+/// <summary>
+/// PHASE X widescreen Mission Control workstation, drawn with OnGUI on a virtual 1920x1080
+/// canvas scaled by GUI.matrix. Needs no fonts, prefabs, canvases or shaders, so it is visible
+/// and clickable the instant Play is pressed.
+/// Layout: header + CML strip | left: segment tabs + part cards | center: 3D viewport |
+/// right: 6 live telemetry gauges, validation box, LAUNCH button | footer: advisor/tooltip.
+/// </summary>
+public class PhaseXRuntimeUI : MonoBehaviour
+{
+    public const float W = 1920f, H = 1080f;
+
+    // ---- layout (virtual pixels)
+    static readonly Rect HeaderRect = new Rect(0, 0, W, 64);
+    static readonly Rect CmlRect = new Rect(0, 64, W, 40);
+    static readonly Rect LeftRect = new Rect(14, 116, 470, 914);
+    static readonly Rect RightRect = new Rect(W - 14 - 470, 116, 470, 914);
+    static readonly Rect FooterRect = new Rect(0, H - 40, W, 40);
+    static readonly Rect ViewportRect = new Rect(494, 104, W - 2 * 494, H - 104 - 40);
+
+    enum Modal { None, Briefing, Report }
+    static Modal _modal = Modal.Briefing;
+    public static bool ModalOpen => _modal != Modal.None;
+
+    MissionCalculator _calc;
+    Vector2 _listScroll;
+    string _hoverTitle, _hoverBody;
+    string _flash;
+    float _flashUntil;
+    float _reportAt = -1f;
+
+    // ---- theme
+    static readonly Color Slate = new Color(0.055f, 0.075f, 0.115f, 0.94f);
+    static readonly Color Ink = new Color(0.02f, 0.03f, 0.055f, 0.97f);
+    static readonly Color Cyan = new Color(0.27f, 0.82f, 1f);
+    static readonly Color CyanDim = new Color(0.16f, 0.36f, 0.48f);
+    static readonly Color Amber = new Color(1f, 0.68f, 0.18f);
+    static readonly Color TextC = new Color(0.88f, 0.93f, 1f);
+    static readonly Color Dim = new Color(0.55f, 0.62f, 0.72f);
+    static readonly Color Green = new Color(0.3f, 0.9f, 0.5f);
+    static readonly Color Red = new Color(1f, 0.36f, 0.3f);
+    static readonly Color Track = new Color(0.11f, 0.15f, 0.22f);
+
+    GUISkin _skin;
+    GUIStyle _panel, _ink, _title, _subtitle, _h2, _label, _labelBold, _small, _right, _center, _btn, _btnOn,
+        _card, _cardSel, _cardLocked, _cardHover, _launchReady, _launchNot, _okBox, _badBox, _window, _chip, _chipOn, _chipDone;
+    readonly List<Texture2D> _textures = new List<Texture2D>();
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    static void ResetStatics() => _modal = Modal.Briefing;
+
+    public void Init(MissionCalculator calc)
+    {
+        _calc = calc;
+        _calc.OnScenarioChanged += () => { _modal = Modal.Briefing; _reportAt = -1f; _listScroll = Vector2.zero; };
+        _calc.OnLaunched += r => { _reportAt = Time.unscaledTime + 1.3f; };
+        _modal = Modal.Briefing;
+    }
+
+    void OnDestroy()
+    {
+        foreach (var t in _textures) if (t != null) Destroy(t);
+    }
+
+    /// <summary>True when a screen-space point (pixels, origin bottom-left) is over the open 3D viewport.</summary>
+    public static bool IsViewportScreenPoint(Vector2 screen)
+    {
+        if (ModalOpen || Screen.width <= 0 || Screen.height <= 0) return false;
+        var v = new Vector2(screen.x * W / Screen.width, (Screen.height - screen.y) * H / Screen.height);
+        return ViewportRect.Contains(v);
+    }
+
+    // ================================================================== keyboard (Update)
+
+    void Update()
+    {
+        if (_calc == null) return;
+
+        if (_reportAt > 0f && Time.unscaledTime >= _reportAt)
+        {
+            _reportAt = -1f;
+            _modal = Modal.Report;
+        }
+
+        if (_modal == Modal.Briefing)
+        {
+            if (PhaseXInput.Down(PhaseXInput.K.Enter) || PhaseXInput.Down(PhaseXInput.K.Space) || PhaseXInput.Down(PhaseXInput.K.Escape))
+                CloseBriefing();
+            return;
+        }
+        if (_modal == Modal.Report)
+        {
+            if (PhaseXInput.Down(PhaseXInput.K.Enter) || PhaseXInput.Down(PhaseXInput.K.Space)) ReportPrimary();
+            else if (PhaseXInput.Down(PhaseXInput.K.Escape)) CloseReport();
+            return;
+        }
+
+        var sc = PhaseXDatabase.Scenarios;
+        if (PhaseXInput.Down(PhaseXInput.K.F1) && sc.Count > 0) _calc.LoadScenario(sc[0]);
+        if (PhaseXInput.Down(PhaseXInput.K.F2) && sc.Count > 1) _calc.LoadScenario(sc[1]);
+        if (PhaseXInput.Down(PhaseXInput.K.F3) && sc.Count > 2) _calc.LoadScenario(sc[2]);
+        if (PhaseXInput.Down(PhaseXInput.K.F4) && sc.Count > 3) _calc.LoadScenario(sc[3]);
+        if (PhaseXInput.Down(PhaseXInput.K.D1)) SetTab(MissionSegmentRole.UserSegment);
+        if (PhaseXInput.Down(PhaseXInput.K.D2)) SetTab(MissionSegmentRole.LaunchSegment);
+        if (PhaseXInput.Down(PhaseXInput.K.D3)) SetTab(MissionSegmentRole.SpaceSegment);
+        if (PhaseXInput.Down(PhaseXInput.K.D4)) SetTab(MissionSegmentRole.GroundSegment);
+        if (PhaseXInput.Down(PhaseXInput.K.D5)) SetTab(null);
+        if (PhaseXInput.Down(PhaseXInput.K.Space) && _reportAt < 0f) _calc.Launch();
+        if (PhaseXInput.Down(PhaseXInput.K.C)) _calc.ClearDesign();
+    }
+
+    void SetTab(MissionSegmentRole? r)
+    {
+        _calc.RoleFilter = r;
+        _listScroll = Vector2.zero;
+    }
+
+    void CloseBriefing()
+    {
+        _modal = Modal.None;
+        _calc.BeginDesign();
+    }
+
+    void CloseReport()
+    {
+        _modal = Modal.None;
+        _calc.BeginDesign();
+    }
+
+    void ReportPrimary()
+    {
+        var r = _calc.LastLaunchReport;
+        var next = _calc.NextScenario();
+        if (r != null && r.MissionReady && next != null) _calc.LoadScenario(next);
+        else CloseReport();
+    }
+
+    void Flash(string msg)
+    {
+        _flash = msg;
+        _flashUntil = Time.unscaledTime + 4f;
+    }
+
+    // ================================================================== OnGUI
+
+    void OnGUI()
+    {
+        if (_calc == null || _calc.CurrentScenario == null) return;
+        EnsureStyles();
+        GUI.skin = _skin;
+        GUI.matrix = Matrix4x4.TRS(Vector3.zero, Quaternion.identity, new Vector3(Screen.width / W, Screen.height / H, 1f));
+        GUI.depth = 0;
+
+        _hoverTitle = null;
+        _hoverBody = null;
+
+        DrawHeader();
+        DrawCmlStrip();
+        DrawLeftPanel();
+        DrawRightPanel();
+        DrawViewportHud();
+        DrawFooter();
+
+        if (_modal != Modal.None)
+        {
+            Fill(new Rect(0, 0, W, H), new Color(0, 0.005f, 0.02f, 0.72f));
+            if (_modal == Modal.Briefing)
+                GUI.ModalWindow(7101, new Rect(W / 2 - 520, 170, 1040, 700), DrawBriefingWindow, GUIContent.none, _window);
+            else
+                GUI.ModalWindow(7102, new Rect(W / 2 - 540, 140, 1080, 780), DrawReportWindow, GUIContent.none, _window);
+        }
+    }
+
+    // ---------------------------------------------------------------- header
+
+    void DrawHeader()
+    {
+        GUI.Box(HeaderRect, GUIContent.none, _ink);
+        Fill(new Rect(0, HeaderRect.yMax - 2, W, 2), Cyan);
+
+        // logo diamond
+        var m = GUI.matrix;
+        GUIUtility.RotateAroundPivot(45f, new Vector2(38, 32));
+        Fill(new Rect(24, 18, 28, 28), Red);
+        Fill(new Rect(30, 24, 16, 16), Ink);
+        GUI.matrix = m;
+
+        GUI.Label(new Rect(66, 4, 220, 40), "PHASE X", _title);
+        GUI.Label(new Rect(68, 38, 520, 22), "// NASA MISSION CONTROL WORKSTATION", _subtitle);
+
+        var sc = _calc.CurrentScenario;
+        GUI.Label(new Rect(560, 8, 540, 26), $"<b>MISSION:</b> {sc.Title.ToUpperInvariant()}", Style(_label, 17, TextAnchor.MiddleCenter));
+        GUI.Label(new Rect(560, 34, 540, 22), Col(sc.Objective, Dim), Style(_small, 12, TextAnchor.MiddleCenter));
+
+        var list = PhaseXDatabase.Scenarios;
+        float bx = W - 14 - list.Count * 196 + 6;
+        for (int i = 0; i < list.Count; i++)
+        {
+            var s = list[i];
+            var r = new Rect(bx + i * 196, 12, 190, 40);
+            if (GUI.Button(r, $"[F{i + 1}]  {s.ShortName}", s == sc ? _btnOn : _btn)) _calc.LoadScenario(s);
+            if (r.Contains(Event.current.mousePosition)) Hover("[F" + (i + 1) + "] " + s.Title, s.Objective);
+        }
+    }
+
+    void DrawCmlStrip()
+    {
+        GUI.Box(CmlRect, GUIContent.none, _ink);
+        Fill(new Rect(0, CmlRect.yMax - 1, W, 1), CyanDim);
+        GUI.Label(new Rect(20, CmlRect.y, 150, CmlRect.height), Col("CML PHASE", Dim), Style(_labelBold, 13, TextAnchor.MiddleLeft));
+
+        int current = (int)_calc.Phase;
+        float x = 140, w = 330;
+        for (int i = 1; i <= 4; i++)
+        {
+            var r = new Rect(x + (i - 1) * (w + 26), CmlRect.y + 6, w, CmlRect.height - 12);
+            var style = i == current ? _chipOn : i < current ? _chipDone : _chip;
+            GUI.Box(r, PhaseXDatabase.CmlTitle((CmlPhase)i), style);
+            if (i < 4) GUI.Label(new Rect(r.xMax, r.y, 26, r.height), Col(">", i < current ? Cyan : Dim), Style(_labelBold, 14, TextAnchor.MiddleCenter));
+        }
+
+        string mode = _calc.CurrentScenario.IsSandbox ? "SANDBOX MODE" : _calc.RoleFilter == null ? "SOLO MODE" : "CO-OP: " + PhaseXDatabase.RoleTitle(_calc.RoleFilter.Value) + " SEGMENT";
+        GUI.Label(new Rect(W - 380, CmlRect.y, 360, CmlRect.height), Col("MODE  ", Dim) + Col(mode, Amber), Style(_labelBold, 13, TextAnchor.MiddleRight));
+    }
+
+    // ---------------------------------------------------------------- left: tabs + part cards
+
+    void DrawLeftPanel()
+    {
+        GUI.Box(LeftRect, GUIContent.none, _panel);
+        GUI.BeginGroup(LeftRect);
+        float w = LeftRect.width;
+        GUI.Label(new Rect(16, 10, w - 32, 22), "MISSION SEGMENTS", _h2);
+
+        var tabs = new (string label, MissionSegmentRole? role)[]
+        {
+            ("[1] USER", MissionSegmentRole.UserSegment), ("[2] LAUNCH", MissionSegmentRole.LaunchSegment),
+            ("[3] SPACE", MissionSegmentRole.SpaceSegment), ("[4] GROUND", MissionSegmentRole.GroundSegment), ("[5] ALL", null)
+        };
+        float tw = (w - 32 - 4 * 6) / 5f;
+        for (int i = 0; i < tabs.Length; i++)
+        {
+            var r = new Rect(16 + i * (tw + 6), 38, tw, 34);
+            if (GUI.Button(r, tabs[i].label, Equals(_calc.RoleFilter, tabs[i].role) ? _btnOn : _btn)) SetTab(tabs[i].role);
+        }
+        GUI.Label(new Rect(16, 78, w - 32, 36), PhaseXDatabase.RoleDescription(_calc.RoleFilter), _small);
+        Fill(new Rect(14, 116, w - 28, 1), CyanDim);
+
+        // ---- scrollable part cards
+        var parts = PhaseXDatabase.Parts.Where(p => _calc.RoleFilter == null || p.Role == _calc.RoleFilter.Value)
+            .OrderBy(p => (int)p.Category).ToList();
+        float cardW = w - 32 - 14;
+        var tipStyle = Style(_small, 12, TextAnchor.UpperLeft);
+        float contentH = 0;
+        PartCategory? lastCat = null;
+        foreach (var p in parts)
+        {
+            if (p.Category != lastCat) { contentH += 30; lastCat = p.Category; }
+            contentH += CardHeight(p, cardW, tipStyle) + 8;
+        }
+
+        var view = new Rect(14, 124, w - 24, LeftRect.height - 136);
+        bool mouseInList = view.Contains(Event.current.mousePosition);
+        _listScroll = GUI.BeginScrollView(view, _listScroll, new Rect(0, 0, cardW + 4, contentH));
+        float y = 0;
+        lastCat = null;
+        foreach (var p in parts)
+        {
+            if (p.Category != lastCat)
+            {
+                lastCat = p.Category;
+                string mode = MissionCalculator.IsSingleSlot(p.Category) ? "single slot - auto-replaces" : "multi-select";
+                GUI.Label(new Rect(2, y + 6, cardW, 22), Col(PhaseXDatabase.CategoryTitle(p.Category), CategoryColor(p.Category)) + "  " + Col("(" + mode + ")", Dim), Style(_labelBold, 13, TextAnchor.MiddleLeft));
+                y += 30;
+            }
+            float h = CardHeight(p, cardW, tipStyle);
+            DrawCard(new Rect(2, y, cardW, h), p, tipStyle, mouseInList);
+            y += h + 8;
+        }
+        GUI.EndScrollView();
+        GUI.EndGroup();
+    }
+
+    static float CardHeight(SpacecraftPart p, float w, GUIStyle tip) => 72 + tip.CalcHeight(new GUIContent(p.EducationalTooltip), w - 28);
+
+    void DrawCard(Rect r, SpacecraftPart p, GUIStyle tipStyle, bool mouseInList)
+    {
+        bool unlocked = _calc.IsUnlocked(p);
+        bool sel = _calc.IsSelected(p);
+        bool hover = mouseInList && r.Contains(Event.current.mousePosition);
+
+        GUI.Box(r, GUIContent.none, !unlocked ? _cardLocked : sel ? _cardSel : hover ? _cardHover : _card);
+        Fill(new Rect(r.x, r.y, 4, r.height), CategoryColor(p.Category) * (unlocked ? 1f : 0.4f));
+
+        var nameStyle = Style(_labelBold, 15, TextAnchor.UpperLeft);
+        string status = !unlocked ? Col("LOCKED - LEVEL " + p.UnlockLevel, Dim) : sel ? Col("INSTALLED", Green) : hover ? Col("CLICK TO ADD", Cyan) : "";
+        GUI.Label(new Rect(r.x + 14, r.y + 8, r.width - 140, 22), unlocked ? p.Name : Col(p.Name, Dim), nameStyle);
+        GUI.Label(new Rect(r.xMax - 150, r.y + 9, 140, 20), status, Style(_labelBold, 11, TextAnchor.UpperRight));
+
+        GUI.Label(new Rect(r.x + 14, r.y + 31, r.width - 28, 18), StatsLine(p), Style(_small, 12, TextAnchor.UpperLeft));
+        GUI.Label(new Rect(r.x + 14, r.y + 49, r.width - 28, 18), StatsLine2(p), Style(_small, 12, TextAnchor.UpperLeft));
+        GUI.Label(new Rect(r.x + 14, r.y + 68, r.width - 28, r.height - 70), Col(p.EducationalTooltip, unlocked ? new Color(0.72f, 0.78f, 0.86f) : Dim), tipStyle);
+
+        if (hover)
+            Hover(p.Name + "  -  " + PhaseXDatabase.CategoryTitle(p.Category) + (MissionCalculator.IsSingleSlot(p.Category) ? " (single slot)" : ""),
+                p.EducationalTooltip);
+
+        if (GUI.Button(r, GUIContent.none, GUIStyle.none))
+        {
+            if (!unlocked) Flash($"{p.Name} unlocks at Level {p.UnlockLevel} (or in Sandbox [F4]).");
+            else _calc.TogglePart(p);
+        }
+    }
+
+    static string StatsLine(SpacecraftPart p)
+    {
+        var bits = new List<string> { Col(MissionCalculator.Money(p.CostMillionUSD), Amber) };
+        if (p.MassKg > 0) bits.Add($"{p.MassKg:0.#} kg");
+        if (p.PowerWatts > 0) bits.Add(Col($"+{p.PowerWatts:0} W", Green));
+        else if (p.PowerWatts < 0) bits.Add(Col($"{p.PowerWatts:0} W", Red));
+        if (p.ScienceScore > 0) bits.Add(Col($"+{p.ScienceScore:0} science", Cyan));
+        bits.Add($"rel {p.Reliability * 100f:0.#}%");
+        return string.Join("    ", bits);
+    }
+
+    static string StatsLine2(SpacecraftPart p)
+    {
+        var bits = new List<string>();
+        switch (p.Category)
+        {
+            case PartCategory.LaunchVehicle: bits.Add($"Lifts {p.MaxPayloadCapacityKg:0} kg"); break;
+            case PartCategory.Structure: bits.Add($"Carries {p.MaxPayloadCapacityKg:0} kg of parts"); break;
+            case PartCategory.Propulsion: bits.Add($"{p.DeltaV:0} m/s for a {p.MaxPayloadCapacityKg:0} kg craft"); break;
+            case PartCategory.Orbit:
+                bits.Add(p.DeltaV > 0 ? $"Insertion +{p.DeltaV:0} m/s" : "No insertion burn");
+                if (p.StationKeepingDvPerMonth > 0) bits.Add($"keep {p.StationKeepingDvPerMonth:0} m/s/month");
+                break;
+            case PartCategory.Comms: bits.Add($"Downlink {p.DataRateMbps:0.##} Mbps"); break;
+            case PartCategory.Payload: bits.Add($"Generates {p.DataRateMbps:0.##} Mbps"); break;
+        }
+        if (p.LifetimeMonths > 0) bits.Add($"life {p.LifetimeMonths:0} mo");
+        if (p.IsSolar) bits.Add("solar");
+        return Col(string.Join("    ", bits), Dim);
+    }
+
+    // ---------------------------------------------------------------- right: telemetry + validation + launch
+
+    void DrawRightPanel()
+    {
+        var rep = _calc.Report;
+        GUI.Box(RightRect, GUIContent.none, _panel);
+        GUI.BeginGroup(RightRect);
+        float w = RightRect.width;
+        GUI.Label(new Rect(16, 10, w - 32, 22), "LIVE TELEMETRY  //  6 RESOURCES", _h2);
+
+        float y = 40;
+        foreach (var g in rep.Gauges)
+        {
+            DrawGauge(new Rect(16, y, w - 32, 54), g);
+            y += 58;
+        }
+
+        var sc = _calc.CurrentScenario;
+        Color sciC = rep.Science >= sc.TargetScience ? Green : Red;
+        Color relC = rep.Reliability >= sc.MinReliability ? Green : Red;
+        GUI.Label(new Rect(16, y, w - 32, 22),
+            Col("SCIENCE ", Dim) + Col($"{rep.Science:0} / {sc.TargetScience:0} pts", sciC) + "      " +
+            Col("RELIABILITY ", Dim) + Col($"{rep.Reliability * 100f:0.0}%", relC) + Col($" (min {sc.MinReliability * 100f:0}%)", Dim),
+            Style(_labelBold, 13, TextAnchor.MiddleLeft));
+        y += 32;
+
+        GUI.Label(new Rect(16, y, w - 32, 22), "ENGINEERING VALIDATION", _h2);
+        y += 28;
+        float boxBottom = RightRect.height - 108;
+        var box = new Rect(16, y, w - 32, boxBottom - y);
+        bool ready = rep.MissionReady;
+        var warnings = rep.Warnings;
+        GUI.Box(box, GUIContent.none, ready ? _okBox : _badBox);
+        GUI.BeginGroup(box);
+        if (ready)
+        {
+            GUI.Label(new Rect(14, 10, box.width - 28, 26), Col("ALL SYSTEMS GO", Green), Style(_labelBold, 20, TextAnchor.UpperLeft));
+            GUI.Label(new Rect(14, 38, box.width - 28, 22), "Design is compatible. Ready for CML 3 launch review.", Style(_label, 13, TextAnchor.UpperLeft));
+            float ay = 70;
+            foreach (var a in rep.Advice)
+            {
+                var c = new GUIContent("- " + a);
+                float h = _small.CalcHeight(c, box.width - 28);
+                GUI.Label(new Rect(14, ay, box.width - 28, h), c, _small);
+                ay += h + 4;
+            }
+        }
+        else
+        {
+            GUI.Label(new Rect(14, 10, box.width - 28, 24), Col(warnings.Count + " ROOT-CAUSE WARNING" + (warnings.Count == 1 ? "" : "S"), Red), Style(_labelBold, 16, TextAnchor.UpperLeft));
+            float wy = 40;
+            var ws = Style(_label, 12, TextAnchor.UpperLeft);
+            foreach (var wmsg in warnings)
+            {
+                var c = new GUIContent(Col("> ", Red) + wmsg);
+                float h = ws.CalcHeight(c, box.width - 28);
+                if (wy + h > box.height - 6) { GUI.Label(new Rect(14, wy, box.width - 28, 18), Col("...", Dim), ws); break; }
+                GUI.Label(new Rect(14, wy, box.width - 28, h), c, ws);
+                wy += h + 6;
+            }
+        }
+        GUI.EndGroup();
+
+        var lr = new Rect(16, RightRect.height - 96, w - 32, 82);
+        string label = ready ? "LAUNCH MISSION\n<size=13>[SPACEBAR] / CLICK</size>" : "LAUNCH (NOT READY)\n<size=13>[SPACEBAR] for root-cause report</size>";
+        if (GUI.Button(lr, label, ready ? _launchReady : _launchNot) && _reportAt < 0f) _calc.Launch();
+        if (lr.Contains(Event.current.mousePosition))
+            Hover("Launch Review", "Submits the design to the review board. A ready design advances to CML 4; otherwise the launch is scrubbed with a root-cause report.");
+        GUI.EndGroup();
+    }
+
+    void DrawGauge(Rect r, ResourceGauge g)
+    {
+        float ratio = g.Ratio;
+        Color c;
+        if (!g.Enabled) c = Dim;
+        else if (g.LowerIsBetter) c = (g.Limit <= 0f && g.Value > 0f) || ratio > 1f ? Red : ratio > 0.85f ? Amber : Green;
+        else c = ratio >= 1f ? Green : ratio >= 0.75f ? Amber : Red;
+        if (g.Value <= 0f && g.Limit <= 0f) c = Dim;
+
+        GUI.Label(new Rect(r.x, r.y, r.width, 20), Col(g.Name, Dim), Style(_labelBold, 12, TextAnchor.MiddleLeft));
+        string val = g.Enabled ? g.Display : g.Display + "  (not checked)";
+        GUI.Label(new Rect(r.x, r.y, r.width, 20), Col(val, c == Green ? TextC : c), Style(_labelBold, 13, TextAnchor.MiddleRight));
+
+        var bar = new Rect(r.x, r.y + 24, r.width, 14);
+        Fill(bar, Track);
+        Fill(new Rect(bar.x, bar.y, bar.width * Mathf.Clamp01(ratio), bar.height), c);
+        if (!g.LowerIsBetter || g.Limit > 0f) Fill(new Rect(bar.x + bar.width - 2, bar.y - 3, 2, bar.height + 6), new Color(1, 1, 1, 0.5f));
+        GUI.Label(new Rect(r.x, r.y + 38, r.width, 16),
+            Col(g.LowerIsBetter ? "must stay under the limit" : "must reach the target", new Color(0.4f, 0.47f, 0.56f)),
+            Style(_small, 10, TextAnchor.UpperLeft));
+    }
+
+    // ---------------------------------------------------------------- viewport + footer
+
+    void DrawViewportHud()
+    {
+        var sc = _calc.CurrentScenario;
+        var lv = _calc.Selected(PartCategory.LaunchVehicle);
+        var orbit = _calc.Selected(PartCategory.Orbit);
+        var bus = _calc.Selected(PartCategory.Structure);
+        float x = ViewportRect.x + 16, y = ViewportRect.y + 14;
+        var s = Style(_labelBold, 12, TextAnchor.UpperLeft);
+        GUI.Label(new Rect(x, y, 600, 18), Col("3D MODULAR SPACECRAFT VIEWPORT", Cyan), s);
+        GUI.Label(new Rect(x, y + 20, 600, 18), Col("ROCKET  ", Dim) + (lv != null ? lv.Name : Col("not selected", Red)), s);
+        GUI.Label(new Rect(x, y + 38, 600, 18), Col("ORBIT   ", Dim) + (orbit != null ? orbit.Name : Col("not selected", Red)), s);
+        GUI.Label(new Rect(x, y + 56, 600, 18), Col("BUS     ", Dim) + (bus != null ? bus.Name : Col("not selected", Red)), s);
+        GUI.Label(new Rect(x, y + 74, 600, 18), Col("MODULES ", Dim) + _calc.SelectedParts.Count + " installed", s);
+
+        GUI.Label(new Rect(ViewportRect.xMax - 416, ViewportRect.y + 14, 400, 18),
+            Col(sc.IsSandbox ? "SANDBOX" : "LEVEL " + sc.DifficultyLevel, Amber) + Col("   |   SCORE ", Dim) + $"{_calc.Report.Score:0}",
+            Style(_labelBold, 13, TextAnchor.UpperRight));
+
+        if (_reportAt > 0f)
+        {
+            bool ok = _calc.LastLaunchReport != null && _calc.LastLaunchReport.MissionReady;
+            GUI.Label(new Rect(ViewportRect.x, ViewportRect.yMax - 120, ViewportRect.width, 40),
+                ok ? Col("IGNITION ... LIFTOFF!", Amber) : Col("LAUNCH SCRUBBED - REVIEWING ROOT CAUSES", Red), Style(_labelBold, 26, TextAnchor.MiddleCenter));
+        }
+        GUI.Label(new Rect(ViewportRect.x, ViewportRect.yMax - 30, ViewportRect.width, 22),
+            Col("Hold LEFT / RIGHT / MIDDLE mouse to orbit 360   |   Scroll to zoom", new Color(0.45f, 0.55f, 0.65f)),
+            Style(_small, 12, TextAnchor.MiddleCenter));
+    }
+
+    void DrawFooter()
+    {
+        GUI.Box(FooterRect, GUIContent.none, _ink);
+        Fill(new Rect(0, FooterRect.y, W, 1), CyanDim);
+        var tag = new Rect(14, FooterRect.y + 8, 110, 24);
+        string title, body;
+        if (_flash != null && Time.unscaledTime < _flashUntil) { title = "NOTICE"; body = Col(_flash, Amber); }
+        else if (_hoverTitle != null) { title = "ADVISOR"; body = $"<b>{_hoverTitle}</b>   " + Col(_hoverBody, Dim); }
+        else
+        {
+            title = "CONTROLS";
+            body = Col("[F1-F4] Scenario    [1-4] Segment tab    [5] All parts    [SPACE] Launch    [C] Clear design    Mouse: orbit / zoom the viewport", Dim);
+        }
+        GUI.Box(tag, title, _chipOn);
+        GUI.Label(new Rect(136, FooterRect.y, W - 150, FooterRect.height), body, Style(_label, 14, TextAnchor.MiddleLeft));
+    }
+
+    void Hover(string title, string body)
+    {
+        _hoverTitle = title;
+        _hoverBody = body;
+    }
+
+    // ---------------------------------------------------------------- modal windows
+
+    void DrawBriefingWindow(int id)
+    {
+        var sc = _calc.CurrentScenario;
+        float w = 1040;
+        Fill(new Rect(0, 0, w, 4), Amber);
+        GUI.Label(new Rect(40, 24, w - 80, 22), Col(PhaseXDatabase.CmlTitle(CmlPhase.Cml1Concept), Amber), Style(_labelBold, 15, TextAnchor.UpperLeft));
+        GUI.Label(new Rect(40, 50, w - 80, 44), sc.Title.ToUpperInvariant(), Style(_title, 32, TextAnchor.UpperLeft));
+        GUI.Label(new Rect(40, 98, w - 80, 26), Col("OBJECTIVE: ", Cyan) + sc.Objective, Style(_labelBold, 16, TextAnchor.UpperLeft));
+        var bs = Style(_label, 17, TextAnchor.UpperLeft);
+        float bh = bs.CalcHeight(new GUIContent(sc.Briefing), w - 80);
+        GUI.Label(new Rect(40, 136, w - 80, bh), sc.Briefing, bs);
+
+        float y = 136 + bh + 22;
+        GUI.Label(new Rect(40, y, w - 80, 22), "MISSION REQUIREMENTS", _h2);
+        y += 30;
+        var req = new List<string>
+        {
+            $"Budget cap  {Col(MissionCalculator.Money(sc.MaxBudget), Amber)}",
+            $"Science target  {Col(sc.TargetScience.ToString("0") + " pts", Cyan)}",
+            $"Mission lifetime  {Col(sc.RequiredLifetimeMonths.ToString("0") + " months", Cyan)}",
+            $"Reliability  {Col("at least " + (sc.MinReliability * 100f).ToString("0") + "%", Cyan)}",
+        };
+        if (sc.AllowedOrbitIds.Length > 0)
+            req.Add("Destination  " + Col(string.Join(" / ", sc.AllowedOrbitIds.Select(i => PhaseXDatabase.GetPart(i)?.Name ?? i)), Cyan));
+        if (sc.CheckDeltaV) req.Add($"Delta-V  {Col(sc.RequiredDeltaV.ToString("0") + " m/s + orbit insertion", Cyan)}");
+        req.Add(sc.CheckDataBottleneck ? "Data  " + Col("radio must keep up with the instruments", Cyan) : "Data  " + Col("not checked at this level", Dim));
+        if (sc.SolarEfficiency < 1f) req.Add("Sunlight  " + Col($"solar panels at {sc.SolarEfficiency * 100f:0}%", Amber));
+        if (sc.EnableCrisisEvents) req.Add("Crisis events  " + Col("enabled (CML 4 operations, later phase)", Dim));
+
+        var rs = Style(_label, 15, TextAnchor.UpperLeft);
+        for (int i = 0; i < req.Count; i++)
+        {
+            float cx = 40 + (i % 2) * ((w - 80) / 2f);
+            GUI.Label(new Rect(cx, y + (i / 2) * 28, (w - 80) / 2f - 10, 26), Col("> ", Amber) + req[i], rs);
+        }
+
+        if (GUI.Button(new Rect(w - 40 - 380, 700 - 40 - 64, 380, 64), "BEGIN TRADE STUDIES  [ENTER]", _launchReady)) CloseBriefing();
+        GUI.Label(new Rect(40, 700 - 40 - 64, 560, 64), Col("Next: CML 2 - assemble your spacecraft from the segment tabs.", Dim), Style(_label, 14, TextAnchor.MiddleLeft));
+    }
+
+    void DrawReportWindow(int id)
+    {
+        var r = _calc.LastLaunchReport ?? _calc.Report;
+        var sc = _calc.CurrentScenario;
+        float w = 1080, h = 780;
+        Fill(new Rect(0, 0, w, 4), r.MissionReady ? Green : Red);
+        GUI.Label(new Rect(40, 22, w - 80, 22), Col(r.MissionReady ? PhaseXDatabase.CmlTitle(CmlPhase.Cml4LunarOps) + "  //  POST-MISSION ENGINEERING REPORT" : "CML 3  //  LAUNCH SCRUBBED - ROOT-CAUSE ANALYSIS", r.MissionReady ? Amber : Red), Style(_labelBold, 15, TextAnchor.UpperLeft));
+        GUI.Label(new Rect(40, 48, w - 300, 44), r.MissionReady ? "MISSION SUCCESS" : "MISSION NOT READY", Style(_title, 34, TextAnchor.UpperLeft));
+        GUI.Label(new Rect(40, 94, w - 80, 24), Col(sc.Title.ToUpperInvariant(), Cyan) + Col($"    SCORE {r.Score:0} / 100", TextC), Style(_labelBold, 16, TextAnchor.UpperLeft));
+
+        // stars (rotated squares; no glyphs needed)
+        for (int i = 0; i < 3; i++)
+        {
+            var m = GUI.matrix;
+            var c = new Vector2(w - 170 + i * 50, 72);
+            GUIUtility.RotateAroundPivot(45f, c);
+            Fill(new Rect(c.x - 15, c.y - 15, 30, 30), i < r.Stars ? new Color(1f, 0.8f, 0.25f) : new Color(0.18f, 0.22f, 0.3f));
+            GUI.matrix = m;
+        }
+
+        // resource summary table
+        float y = 138;
+        GUI.Label(new Rect(40, y, 400, 22), "RESOURCE SUMMARY", _h2);
+        y += 28;
+        foreach (var g in r.Gauges)
+        {
+            string badge = !g.Enabled ? Col("[ -- ]", Dim) : g.Ok ? Col("[ OK ]", Green) : Col("[FAIL]", Red);
+            GUI.Label(new Rect(40, y, 470, 24), badge + "  " + g.Name, Style(_labelBold, 14, TextAnchor.MiddleLeft));
+            GUI.Label(new Rect(40, y, 470, 24), Col(g.Display, Dim), Style(_label, 13, TextAnchor.MiddleRight));
+            y += 28;
+        }
+        GUI.Label(new Rect(40, y + 4, 470, 24),
+            Col("SCIENCE ", Dim) + $"{r.Science:0}/{r.TargetScience:0}" + Col("    RELIABILITY ", Dim) + $"{r.Reliability * 100f:0.0}%",
+            Style(_labelBold, 14, TextAnchor.MiddleLeft));
+
+        // right column: root causes or engineer's notes
+        float rx = 560, rw = w - rx - 40, ry = 138;
+        GUI.Label(new Rect(rx, ry, rw, 22), r.MissionReady ? "SYSTEMS ENGINEER'S NOTES" : "ROOT CAUSES", _h2);
+        ry += 30;
+        var items = r.MissionReady
+            ? (r.Advice.Count > 0 ? r.Advice : new List<string> { "Flawless design. The spacecraft reaches lunar operations with healthy margins." })
+            : r.Warnings;
+        var ls = Style(_label, 14, TextAnchor.UpperLeft);
+        foreach (var it in items.Take(8))
+        {
+            var cont = new GUIContent(Col("> ", r.MissionReady ? Cyan : Red) + it);
+            float ih = ls.CalcHeight(cont, rw);
+            GUI.Label(new Rect(rx, ry, rw, ih), cont, ls);
+            ry += ih + 8;
+        }
+        if (r.MissionReady)
+            GUI.Label(new Rect(rx, Mathf.Max(ry + 10, 520), rw, 60),
+                Col("CML 4 lunar orbit simulation & crisis management arrive in the next phase.", Dim), Style(_small, 13, TextAnchor.UpperLeft));
+
+        var next = _calc.NextScenario();
+        bool canNext = r.MissionReady && next != null;
+        if (GUI.Button(new Rect(40, h - 40 - 62, 320, 62), "BACK TO DESIGN  [ESC]", _btn)) CloseReport();
+        if (canNext && GUI.Button(new Rect(w - 40 - 420, h - 40 - 62, 420, 62), $"NEXT MISSION: {next.ShortName}  [ENTER]", _launchReady))
+            _calc.LoadScenario(next);
+        if (!canNext && !r.MissionReady && GUI.Button(new Rect(w - 40 - 420, h - 40 - 62, 420, 62), "FIX THE DESIGN  [ENTER]", _launchNot))
+            CloseReport();
+    }
+
+    // ================================================================== drawing helpers & styles
+
+    static void Fill(Rect r, Color c)
+    {
+        var old = GUI.color;
+        GUI.color = c;
+        GUI.DrawTexture(r, Texture2D.whiteTexture);
+        GUI.color = old;
+    }
+
+    static string Col(string s, Color c) => $"<color=#{ColorUtility.ToHtmlStringRGB(c)}>{s}</color>";
+
+    static Color CategoryColor(PartCategory c)
+    {
+        switch (c)
+        {
+            case PartCategory.LaunchVehicle: return new Color(1f, 0.45f, 0.3f);
+            case PartCategory.Orbit: return new Color(0.75f, 0.55f, 1f);
+            case PartCategory.Power: return new Color(1f, 0.82f, 0.25f);
+            case PartCategory.Propulsion: return new Color(1f, 0.6f, 0.15f);
+            case PartCategory.Payload: return new Color(0.35f, 0.95f, 0.55f);
+            case PartCategory.Comms: return new Color(0.3f, 0.75f, 1f);
+            default: return new Color(0.7f, 0.75f, 0.82f);
+        }
+    }
+
+    readonly Dictionary<string, GUIStyle> _styleCache = new Dictionary<string, GUIStyle>();
+
+    GUIStyle Style(GUIStyle baseStyle, int size, TextAnchor align)
+    {
+        string key = baseStyle.name + size + align;
+        if (_styleCache.TryGetValue(key, out var s)) return s;
+        s = new GUIStyle(baseStyle) { fontSize = size, alignment = align };
+        _styleCache[key] = s;
+        return s;
+    }
+
+    Texture2D Tex(Color fill, Color? border = null)
+    {
+        const int n = 8;
+        var t = new Texture2D(n, n, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp, hideFlags = HideFlags.DontSave };
+        var px = new Color[n * n];
+        for (int y = 0; y < n; y++)
+        for (int x = 0; x < n; x++)
+            px[y * n + x] = border.HasValue && (x == 0 || y == 0 || x == n - 1 || y == n - 1) ? border.Value : fill;
+        t.SetPixels(px);
+        t.Apply();
+        _textures.Add(t);
+        return t;
+    }
+
+    GUIStyle Box(string name, Color fill, Color? border = null)
+    {
+        var s = new GUIStyle { name = name, border = new RectOffset(2, 2, 2, 2) };
+        s.normal.background = Tex(fill, border);
+        return s;
+    }
+
+    GUIStyle Text(string name, int size, Color color, FontStyle fs = FontStyle.Normal, TextAnchor align = TextAnchor.UpperLeft, bool wrap = true)
+    {
+        var s = new GUIStyle { name = name, fontSize = size, fontStyle = fs, alignment = align, wordWrap = wrap, richText = true, clipping = TextClipping.Clip };
+        s.normal.textColor = color;
+        return s;
+    }
+
+    GUIStyle Button(string name, Color fill, Color border, Color text, int size, Color? hoverFill = null)
+    {
+        var s = new GUIStyle
+        {
+            name = name, fontSize = size, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter, richText = true,
+            border = new RectOffset(2, 2, 2, 2), padding = new RectOffset(6, 6, 4, 4), wordWrap = true
+        };
+        s.normal.background = Tex(fill, border);
+        s.normal.textColor = text;
+        s.hover.background = Tex(hoverFill ?? Color.Lerp(fill, Color.white, 0.12f), Color.Lerp(border, Color.white, 0.3f));
+        s.hover.textColor = Color.white;
+        s.active.background = Tex(Color.Lerp(fill, Color.black, 0.25f), border);
+        s.active.textColor = text;
+        return s;
+    }
+
+    GUIStyle Chip(string name, Color fill, Color border, Color text)
+    {
+        var s = Box(name, fill, border);
+        s.fontSize = 13;
+        s.fontStyle = FontStyle.Bold;
+        s.alignment = TextAnchor.MiddleCenter;
+        s.normal.textColor = text;
+        s.richText = true;
+        return s;
+    }
+
+    void EnsureStyles()
+    {
+        if (_skin != null) return;
+        _skin = Instantiate(GUI.skin);
+        _skin.hideFlags = HideFlags.DontSave;
+        _skin.verticalScrollbar.normal.background = Tex(new Color(0.04f, 0.06f, 0.09f), new Color(0.1f, 0.15f, 0.2f));
+        _skin.verticalScrollbar.fixedWidth = 10;
+        _skin.verticalScrollbarThumb.normal.background = Tex(CyanDim, Cyan);
+        _skin.verticalScrollbarThumb.fixedWidth = 10;
+        _skin.horizontalScrollbar.fixedHeight = 0;
+
+        _panel = Box("px_panel", Slate, new Color(0.14f, 0.3f, 0.4f));
+        _ink = Box("px_ink", Ink);
+        _title = Text("px_title", 30, Cyan, FontStyle.Bold, TextAnchor.UpperLeft, false);
+        _subtitle = Text("px_subtitle", 13, Amber, FontStyle.Bold, TextAnchor.UpperLeft, false);
+        _h2 = Text("px_h2", 14, Cyan, FontStyle.Bold, TextAnchor.MiddleLeft, false);
+        _label = Text("px_label", 14, TextC);
+        _labelBold = Text("px_labelbold", 14, TextC, FontStyle.Bold, TextAnchor.UpperLeft, false);
+        _small = Text("px_small", 12, Dim);
+        _right = Text("px_right", 13, TextC, FontStyle.Normal, TextAnchor.UpperRight, false);
+        _center = Text("px_center", 14, TextC, FontStyle.Normal, TextAnchor.MiddleCenter);
+
+        _btn = Button("px_btn", new Color(0.08f, 0.12f, 0.19f), new Color(0.2f, 0.36f, 0.5f), TextC, 13);
+        _btnOn = Button("px_btn_on", new Color(0.07f, 0.33f, 0.43f), Cyan, Color.white, 13);
+        _launchReady = Button("px_launch", new Color(0.93f, 0.55f, 0.1f), new Color(1f, 0.85f, 0.5f), new Color(0.08f, 0.05f, 0.02f), 22, new Color(1f, 0.66f, 0.2f));
+        _launchNot = Button("px_launch_not", new Color(0.32f, 0.1f, 0.09f), new Color(0.6f, 0.22f, 0.2f), new Color(1f, 0.8f, 0.78f), 20);
+
+        _card = Box("px_card", new Color(0.075f, 0.105f, 0.16f), new Color(0.15f, 0.22f, 0.32f));
+        _cardHover = Box("px_card_hover", new Color(0.1f, 0.14f, 0.21f), Amber);
+        _cardSel = Box("px_card_sel", new Color(0.05f, 0.21f, 0.27f), Cyan);
+        _cardLocked = Box("px_card_locked", new Color(0.045f, 0.055f, 0.075f), new Color(0.1f, 0.12f, 0.15f));
+        _okBox = Box("px_ok", new Color(0.04f, 0.18f, 0.1f, 0.95f), Green);
+        _badBox = Box("px_bad", new Color(0.18f, 0.05f, 0.05f, 0.95f), Red);
+        _window = Box("px_window", new Color(0.04f, 0.06f, 0.1f, 0.99f), CyanDim);
+
+        _chip = Chip("px_chip", new Color(0.05f, 0.07f, 0.11f), new Color(0.12f, 0.17f, 0.24f), new Color(0.4f, 0.47f, 0.56f));
+        _chipDone = Chip("px_chip_done", new Color(0.05f, 0.14f, 0.19f), CyanDim, Cyan);
+        _chipOn = Chip("px_chip_on", Amber, new Color(1f, 0.85f, 0.5f), new Color(0.08f, 0.05f, 0.02f));
+    }
+}

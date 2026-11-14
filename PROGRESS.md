@@ -1,57 +1,81 @@
-# ORBITEX: LUNAR MISSION — Progress Log
+# PHASE X: LUNAR MISSION — Progress Log
 
-NASA Space Apps 2026 · "Space Mission Design Game" · Unity 6000.6.9f1 · URP 17 · uGUI · Input System
+NASA Space Apps 2026 · "Space Mission Design Game" · PC Desktop (Windows + Linux, 1920x1080, mouse + keyboard)
+Unity 6000.6.9f1 · URP 17 · Input System (legacy Input Manager also supported)
 
 ## How to run
-Open the project in Unity and press **Play** in any scene (even an empty one).
-`OrbitexBootstrap` (`[RuntimeInitializeOnLoadMethod(AfterSceneLoad)]`) spawns everything in code:
-managers, camera/lighting, procedural Earth–Moon–spacecraft visuals and the full Mission Control UI.
-No prefabs, materials, fonts or ScriptableObject assets are required.
+Open the project and press **Play** in any scene, even a blank one.
+`PhaseXBootstrap` (`[RuntimeInitializeOnLoadMethod(AfterSceneLoad)]`) spawns the core manager, the 3D modular
+spacecraft viewport and the OnGUI workstation. No prefabs, materials, fonts, canvases or ScriptableObject assets are used.
+
+### Controls
+| Input | Action |
+|---|---|
+| `F1`–`F4` | Scenario: L1 CubeSat, L2 South Pole Ice, L3 Far-Side Lander, Sandbox |
+| `1`–`4` / `5` | Segment tab: User, Launch, Space, Ground / All parts |
+| Click a part card | Install / remove a part (launcher, orbit and bus are single slots that auto-replace) |
+| Hold left/right/middle mouse in the viewport | Orbit the camera 360° |
+| Mouse wheel in the viewport | Smooth zoom |
+| `SPACE` or LAUNCH button | Launch review (success → CML 4 report, otherwise a root-cause report) |
+| `C` | Clear design |
+| `ENTER` / `ESC` | Confirm / close briefing and report windows |
 
 ## Conventions (Windows + Linux team)
-- All code in `Assets/_Orbitex/Scripts/<Area>/PascalCase.cs`, global namespace, forward slashes.
-- `.gitattributes`: `* text=auto eol=lf` + Unity YAML merge rules; `.meta` files are committed (stable GUIDs).
-- Each phase: `git pull --rebase` → build → update this file → commit → push.
+- Code lives in `Assets/_PhaseX/Scripts/<Area>/PascalCase.cs`, global namespace, forward slashes.
+- `.gitattributes` has `* text=auto eol=lf` plus Unity YAML merge rules; `.meta` files are committed so GUIDs stay stable.
+- Each phase: `git pull --rebase` → build → verify → update this file → commit → push.
 
 ---
 
-## Phase 1 — Core Data, Trade-Off Calculator, 3D Preview & Level-1 Playable UI ✅
+## Phase 1 — Core Architecture, 3D Modular Spacecraft, Widescreen HUD & Level-1 Scenario ✅
 
 | File | Purpose |
 |---|---|
-| `Data/OrbitexModels.cs` | `PartCategory`, `MissionSegmentRole`, `SpacecraftPart`, `MissionScenario`, `MissionCheck`, `MissionReport` |
-| `Data/OrbitexDatabase.cs` | Built-in catalog: **4 scenarios** + **18 NASA-inspired parts** with educational tooltips; role/category/CML labels |
-| `Core/MissionCalculator.cs` | Singleton: current scenario, active role tab, selected parts (auto-replace for LaunchVehicle / Orbit / Structure), full trade-off evaluation, score & stars, advice |
-| `Core/OrbitexBootstrap.cs` | Zero-click boot: EventSystem (Input System module), camera, sun, ambient, preview, UI; invariant culture |
-| `Visuals/OrbitexMaterials.cs` | Runtime URP materials (with build-safe fallbacks) + procedural Earth/Moon textures |
-| `Visuals/SpacecraftPreview.cs` | Earth, Moon, starfield, orbit path for the chosen orbit, spacecraft assembled from selected parts; drag to rotate, scroll to zoom, launch animation |
-| `UI/OrbitexUI.cs`, `UI/OrbitexHover.cs` | Code-only uGUI helpers (panels, labels, buttons, bars, scroll lists, hover) |
-| `UI/MissionControlUI.cs` | Dark mission-control screen: scenario bar, 4 segment-role tabs + component cards, telemetry bars, requirement checklist, advisor bar, briefing & results modals |
+| `Data/PhaseXModels.cs` | `PartCategory`, `MissionSegmentRole`, `CmlPhase`, `SpacecraftPart`, `MissionScenario`, `ResourceGauge`, `MissionReport` |
+| `Data/PhaseXDatabase.cs` | Built-in catalog of **4 scenarios** and **18 NASA-inspired parts**, each with a one-sentence trade-off tooltip |
+| `Core/MissionCalculator.cs` | Singleton: selection with auto-replacing single slots, CML phase flow, **6 live resources**, `ValidateMission(out List<string> warnings)`, score and stars |
+| `Core/PhaseXBootstrap.cs` | Static zero-click bootstrapper; sets invariant culture so money shows as `$12.7M` |
+| `Core/PhaseXInput.cs` | Keyboard and mouse wrapper (new Input System or legacy Input Manager) |
+| `Visuals/PhaseXMaterials.cs` | Runtime URP materials with build-safe fallbacks; procedural Earth, Moon and star-dot textures |
+| `Visuals/ProceduralSpacecraftView.cs` | Dark-space camera, star particles, sun, Earth/Moon backdrop, orbit path, prebuilt modules toggled with `SetActive` (pop-in), mouse orbit and zoom, launch animation |
+| `UI/PhaseXRuntimeUI.cs` | OnGUI workstation on a 1920x1080 virtual canvas (`GUI.matrix`): header with F1–F4, CML strip, segment tabs and part cards, 6 telemetry gauges, validation box, LAUNCH button, advisor footer, briefing and report windows |
+
+### Game loop implemented
+CML 1 briefing (objective and requirements) → CML 2 trade studies (assembly) → CML 3 when every check passes
+→ launch → CML 4 post-mission engineering report (score, stars, resource summary, engineer's notes).
+A launch that isn't ready is scrubbed and the report lists the root causes.
+
+### 6 live resources
+| Resource | Rule |
+|---|---|
+| Budget ($M) | Sum of part costs ≤ scenario cap |
+| Mass vs rocket capacity (kg) | Bus + components ≤ launcher capacity; components ≤ bus capacity is also checked |
+| Net power (W) | Generation (solar × scenario sunlight factor; RTG unaffected) ≥ consumption |
+| Data vs downlink (Mbps) | Payload output ≤ radio downlink; a bottleneck scales science down |
+| Delta-V (m/s) | Σ engine delta-V × min(1, reference mass ÷ craft mass) ≥ mission delta-V + orbit insertion |
+| Mission lifetime (months) | Shortest part design life, or leftover delta-V ÷ the orbit's monthly station-keeping cost, ≥ requirement |
+
+Science target, destination orbit and minimum reliability (product of part reliabilities) are also validated.
 
 ### Scenarios
-| Level | Mission | CML | Budget | Science | Checks |
+| Key | Scenario | Budget | Science | Lifetime | Notes |
 |---|---|---|---|---|---|
-| 1 | Lunar Prep CubeSat (LEO) | CML 1 Cocktail Napkin | $20M | 25 | core, budget, mass, bus, power, orbit, Δv, science, reliability |
-| 2 | Lunar South Pole Ice Hunter (LLO) | CML 2 Initial Feasibility | $160M | 60 | + data bottleneck, solar at 60% |
-| 3 | Far-Side Rover & Relay (NRHO) | CML 3 Trade Space | $320M | 90 | + landing Δv 1100 m/s, crisis flag (Phase TBD) |
-| 4 | Sandbox Mission Lab | CML 4 Point Design | $1B | 100 | all parts unlocked |
+| F1 | L1 LEO / Lunar Prep CubeSat | $20M | 25 | 6 mo | Level-1 parts; data check off |
+| F2 | L2 Lunar South Pole Ice | $160M | 60 | 12 mo | Low lunar polar orbit, solar at 60%, data bottleneck |
+| F3 | L3 Far-Side Lander | $320M | 90 | 6 mo | Halo-orbit relay, 1100 m/s landing, crisis flag (later phase) |
+| F4 | Sandbox | $1B | 100 | 12 mo | Every part unlocked |
 
-### Trade-off model
-- **Cost** = Σ part cost. **Launch mass** = bus + components ≤ launcher capacity. **Bus load** = components ≤ bus capacity.
-- **Power**: generators (solar × scenario SolarEfficiency, RTG unaffected) ≥ consumers.
-- **Data**: payload Mbps ≤ comms Mbps; if bottlenecked, science is scaled by downlink/generated.
-- **Δv**: Σ propulsion rated Δv × min(1, reference mass / spacecraft mass) ≥ scenario Δv + orbit insertion Δv.
-- **Reliability** = Π part reliabilities ≥ scenario minimum.
-- **Score**: not ready → up to 50 by checks passed; ready → 60 + science bonus (15) + budget savings (15) + reliability margin (10); 1–3 stars.
-
-### Verified
-- Compiles against Unity 6.6 assemblies with and without `ENABLE_INPUT_SYSTEM`.
-- Unity batch-mode import: no compiler errors; balance check confirmed reference designs pass
-  (L1 $12.7M / 2★, L2 $52M / 2★, L3 $180M / 2★) and wrong designs fail with the right reasons.
-- Not yet eyeballed in Play mode by a human: visual layout/polish should be checked on first Play.
+### Verified (2026-11-14)
+- Compiles with zero errors against the Unity 6.6 assemblies, both with and without `ENABLE_INPUT_SYSTEM`; Unity batch import is clean.
+- Balance: the reference designs win L1 ($12.7M, 2★), L2 ($52M, 2★), L3 ($180M, 2★) and Sandbox (3★).
+  Wrong designs fail with the expected root causes (over budget, overloaded bus, data bottleneck, delta-V shortfall, lifetime).
+- Play mode run in batch mode on SampleScene: the bootstrap fires, 1,165 star particles are live, the CML phase moves 1 → 3 → 4 on build and launch, and money shows as `$12.7M`.
+- Offscreen renders checked: CubeSat (silver bus, rails, camera lens, whip antenna, LEO ring) and the full lunar build
+  (gold-foil cylinder bus, solar wings, dish, RTG, main engine).
+- Not yet checked by a person in the Game view: the OnGUI HUD can't be captured in batch mode, so check its layout on first Play.
 
 ### Next phases (planned)
-- Phase 2: crisis events, campaign progression/unlocks, save/load.
-- Phase 3: 4-player role co-op (hot-seat role ownership + segment sign-off).
+- Phase 2: CML 4 lunar-orbit simulation and crisis events (solar flare, comms loss, thruster fault).
+- Phase 3: 4-player co-op role ownership and segment sign-off; campaign unlocks.
 - Phase 4: launch/trajectory cinematic, audio, juice.
-- Phase 5: polish, accessibility, build & demo script.
+- Phase 5: polish, accessibility, standalone builds, demo script.
