@@ -298,16 +298,16 @@ namespace PhaseX.Station
             var lamp = PhaseXMaterials.Lit(new Color(0.6f, 0.6f, 0.55f), 0.5f, 0f, new Color(3f, 2.8f, 2.2f));
             var amberLamp = PhaseXMaterials.Lit(new Color(0.5f, 0.3f, 0.05f), 0.5f, 0f, new Color(2.6f, 1.5f, 0.3f));
             var redLamp = PhaseXMaterials.Lit(new Color(0.5f, 0.05f, 0.04f), 0.5f, 0f, new Color(3f, 0.25f, 0.2f));
-            var beam = StationKit.Ghost(new Color(1f, 0.95f, 0.82f, 0.045f));
-            var beamCore = StationKit.Ghost(new Color(1f, 0.97f, 0.88f, 0.07f));
-            var coolBeam = StationKit.Ghost(new Color(0.7f, 0.85f, 1f, 0.04f));
+            var beam = StationKit.Ghost(new Color(1f, 0.95f, 0.82f, 0.016f));
+            var beamCore = StationKit.Ghost(new Color(1f, 0.97f, 0.88f, 0.028f));
+            var coolBeam = StationKit.Ghost(new Color(0.7f, 0.85f, 1f, 0.014f));
 
             // ---- floodlight beams from the two existing lamps onto the rocket
             var aim = new Vector3(0f, 14f, padZ);
             foreach (var p in new[] { new Vector3(-13f, 12.2f, padZ - 12f), new Vector3(13f, 12.2f, padZ - 12f) })
             {
-                StationKit.Rod(d, "FloodBeam", p, aim, 2.8f, beam);
-                StationKit.Rod(d, "FloodBeamCore", p, aim, 1f, beamCore);
+                StationKit.Rod(d, "FloodBeam", p, aim, 1.8f, beam);
+                StationKit.Rod(d, "FloodBeamCore", p, aim, 0.6f, beamCore);
             }
 
             // ---- two more light towers behind the pad. Only one carries a real light (a cool rim light), so the
@@ -317,7 +317,7 @@ namespace PhaseX.Station
                 var foot = new Vector3(s * 17f, 0f, padZ + 13f);
                 StationKit.Box(d, "RimLightPole", foot + Vector3.up * 7.5f, new Vector3(0.35f, 15f, 0.35f), dark);
                 StationKit.Box(d, "RimLightLamp", foot + Vector3.up * 15.2f, new Vector3(2.4f, 0.9f, 0.5f), lamp, false, new Vector3(0f, s * 50f, 0f));
-                StationKit.Rod(d, "RimLightBeam", foot + Vector3.up * 15f, aim + Vector3.up * 4f, 2.4f, coolBeam);
+                StationKit.Rod(d, "RimLightBeam", foot + Vector3.up * 15f, aim + Vector3.up * 4f, 1.6f, coolBeam);
                 if (s > 0)
                 {
                     var l = StationKit.Node("RimLight", d, foot + Vector3.up * 15f).gameObject.AddComponent<Light>();
@@ -361,10 +361,15 @@ namespace PhaseX.Station
 
             // ---- horizon: a warm line at the ground's edge under layered blue airglow
             const float hz = 357f;
-            StationKit.Box(d, "HorizonDawn", new Vector3(0f, 0.9f, hz), new Vector3(720f, 2f, 0.5f), StationKit.Ghost(new Color(1f, 0.72f, 0.42f, 0.32f)));
-            StationKit.Box(d, "HorizonGlowA", new Vector3(0f, 4f, hz + 1f), new Vector3(720f, 8f, 0.5f), StationKit.Ghost(new Color(0.3f, 0.62f, 1f, 0.26f)));
-            StationKit.Box(d, "HorizonGlowB", new Vector3(0f, 12f, hz + 2f), new Vector3(720f, 24f, 0.5f), StationKit.Ghost(new Color(0.25f, 0.55f, 1f, 0.11f)));
-            StationKit.Box(d, "HorizonGlowC", new Vector3(0f, 30f, hz + 3f), new Vector3(720f, 60f, 0.5f), StationKit.Ghost(new Color(0.2f, 0.45f, 1f, 0.05f)));
+            // many faint layers of growing height add up to a smooth gradient that fades into the night sky
+            StationKit.Box(d, "HorizonDawn", new Vector3(0f, 0.7f, hz), new Vector3(2400f, 1.6f, 0.5f), StationKit.Ghost(new Color(1f, 0.72f, 0.42f, 0.16f)));
+            var airglow = StationKit.Ghost(new Color(0.25f, 0.5f, 1f, 0.012f));
+            float layer = 2f;
+            for (int i = 0; i < 16; i++)
+            {
+                StationKit.Box(d, "HorizonGlow", new Vector3(0f, layer * 0.5f, hz + 1f + i * 0.4f), new Vector3(2400f, layer, 0.5f), airglow);
+                layer *= 1.25f;
+            }
         }
 
         /// <summary>

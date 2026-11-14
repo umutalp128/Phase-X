@@ -424,6 +424,23 @@ Architecture notes are in `ARCHITECTURE.md` section 10.
 - Badges are awarded once ever, not once per session.
 - The interaction prompt and the toast were re-laid out; the toast is narrower so it no longer overlaps the checklist.
 
+### Verified (2026-11-14)
+- Unity 6000.6.9f1 batch compile: zero errors, zero warnings (four old obsolete-API warnings in the editor menu
+  script were fixed on the way).
+- Batch play-mode run with a temporary harness (deleted afterwards): 28 checks passed, zero errors or exceptions logged.
+  It booted the station, played every sound, checked the hum starts and stops at 0 % volume, entered and left the
+  monitor, installed 9 modules, cycled X-Ray mode through every part, opened and closed a panel, paused and resumed
+  (timeScale, audio, finite camera pose), launched, flew a full flight answering 2 crises, confirmed the mission record
+  (2 stars, 80.9), XP and missions-flown were saved, and quit through `QuitGame()` (timeScale 1, audio unpaused).
+- The `Ensure…` detail builders were called twice and added nothing the second time.
+- Screenshots checked: CAD viewport with detailed modules, launch pad and horizon, hologram X-Ray lines and
+  calibration ring, astronaut front and back. Beams and horizon glow were toned down after the first screenshots.
+- The star glyph resolved to U+2605 on this Windows machine.
+- **Not verified:** anything drawn with OnGUI. Batch mode never calls `OnGUI`, so the pause menu layout, QUIT button
+  click, volume slider drag, stat chips, MISSION FIT badge, gauge glide, reticle, keycaps and rank box compile but have
+  not been seen on screen. Sounds were triggered but not listened to. A pre-built station saved in a scene was not
+  tested as a saved scene (only the idempotent path was). No standalone or web build was made.
+
 ### Next phases (planned)
 - (On hold) Phase 4: 4-player co-op role ownership and segment sign-off; campaign unlocks; save progress.
 - (On hold) Phase 5: polish, audio, accessibility, standalone builds, demo script.
