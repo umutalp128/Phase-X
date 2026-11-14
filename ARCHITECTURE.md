@@ -1,14 +1,14 @@
 # PHASE X — Architecture
 
 PHASE X is a NASA Space Apps mission-design game. Everything is built from code at Play time: no prefabs, models,
-fonts, textures or material assets. This document describes how the pieces fit, with the **3D Mission Control
+fonts, textures or material assets. The only data asset is the part catalog, `spacecraft_parts.json`. This document describes how the pieces fit, with the **3D Mission Control
 station** (added after Phase 3) in detail.
 
 ## 1. Layers
 
 | Layer | Folder (`Assets/_PhaseX/Scripts/`) | Namespace | Role |
 |---|---|---|---|
-| Data | `Data/` | global | `SpacecraftPart`, `MissionScenario`, `MissionReport`; the 18-part / 4-scenario catalog (`PhaseXDatabase`) |
+| Data | `Data/`, `Resources/Data/spacecraft_parts.json` | global | `SpacecraftPart`, `MissionScenario`, `MissionReport`; `PartsJsonLoader` reads the part catalog from JSON; `PhaseXDatabase` serves it plus the 4 scenarios |
 | Core | `Core/` | global | `MissionCalculator` (design state + the 6-resource engineering model), `PhaseXBootstrap`, `PhaseXInput` |
 | Visuals | `Visuals/` | global | `ProceduralSpacecraftView` (modular spacecraft + design viewport), `PhaseXMaterials` |
 | Simulation | `Simulation/` | global | `LunarFlightPlan`, `TrajectorySimulator` (CML 4 flight), `CrisisEventManager` (Red Alerts) |
@@ -23,6 +23,48 @@ and only talks to the old code through its public API plus four small hooks (sec
 
 > Naming note: the data classes are plain C# classes (`SpacecraftPart`, `MissionScenario`), not ScriptableObjects,
 > and the workstation GUI is OnGUI, not a uGUI Canvas. That is what keeps the project zero-asset and zero-click.
+
+## 1a. Part catalog — `spacecraft_parts.json`
+
+Every spacecraft part and its stats live in one file: `Assets/_PhaseX/Resources/Data/spacecraft_parts.json`.
+No part is defined in C#. Mission scenarios are still defined in `PhaseXDatabase.cs`.
+
+**Flow:** `PhaseXDatabase.Parts` (first access) → `PartsJsonLoader.LoadAllParts()` →
+`Resources.Load<TextAsset>("Data/spacecraft_parts")` → `JsonUtility` → `SpacecraftPartJsonDTO` → validated and mapped to
+the runtime `SpacecraftPart` objects that `MissionCalculator`, the workstation GUI and the hologram table already use.
+The catalog is re-read on every Play, so an edit shows up the next time you press Play, with no C# change.
+
+**Schema** (root object with a `"parts"` array):
+
+| Key | Type | Meaning |
+|---|---|---|
+| `partId` | string, required, unique | Stable id. Code and saved designs refer to it — do not rename existing ids |
+| `partName` | string | Name on the part card |
+| `category` | string, required | `LaunchVehicle`, `Orbit`, `Structure`, `Power`, `Propulsion`, `Payload` or `Comms` (case-insensitive). Also decides the mission segment tab |
+| `unlockLevel` | int, default 1 | Scenario level (1–3) at which the part appears. Sandbox unlocks everything |
+| `costMillionUSD` | number | Cost in $M |
+| `massKg` | number | Spacecraft mass it adds. Launchers and orbits are 0 |
+| `maxPayloadCapacityKg` | number | Launcher: kg it lifts. Structure: kg of parts the bus carries. Propulsion: craft mass at which the rated delta-V holds |
+| `powerWatts` | number | Positive generates, negative consumes |
+| `dataRateMbps` | number | Payload: data produced. Comms: downlink capacity |
+| `deltaV` | number | Propulsion: rated delta-V (m/s). Orbit: insertion delta-V the craft must supply |
+| `stationKeepingDvPerMonth` | number | Orbit only: m/s per month to stay in orbit |
+| `lifetimeMonths` | number | Design life. 0 means it does not limit mission lifetime |
+| `scienceScore` | number | Science points (payloads and orbits) |
+| `reliability` | number, default 0.99 | Above 0 and at most 1 |
+| `isSolar` | bool | Power output is scaled by the scenario's sunlight factor |
+| `educationalTooltip` | string | The lesson shown on the card and in the hologram X-ray |
+
+**To add or edit a part:** edit the JSON, then press Play. `PhaseX ▸ Data ▸ Validate Parts JSON` checks the file without
+entering Play mode, and `PhaseX ▸ Data ▸ Open Parts JSON` opens it.
+
+**Errors** are logged with the prefix `[PhaseX JSON Loader]` and name the entry (`parts[4] ("com_xband")`). A missing or
+unparsable file leaves the catalog empty. A single bad entry (no id, duplicate id, unknown category) is skipped and the rest
+still load. On success the console shows `[PhaseX] Successfully loaded N NASA spacecraft parts from spacecraft_parts.json`.
+
+**3D visuals are keyed by `partId`.** A new id plays correctly in the calculator and GUI but has no 3D module until one is
+added in `ProceduralSpacecraftView.BuildSpacecraft()`. Launch vehicles other than `lv_small`, `lv_medium` and `lv_heavy`
+show the medium rocket on the pad and no miniature on the hologram stand.
 
 ## 2. Boot sequence
 

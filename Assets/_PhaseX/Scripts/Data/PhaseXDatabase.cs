@@ -2,13 +2,25 @@ using System.Collections.Generic;
 using System.Linq;
 
 /// <summary>
-/// Built-in, code-only catalog: 4 scenarios and 18 NASA-inspired modular components.
+/// The game catalog: NASA-inspired modular components, loaded from spacecraft_parts.json by
+/// <see cref="PartsJsonLoader"/>, and the 4 scenarios (still defined here).
 /// Values are simplified for gameplay but keep real-world trade-off directions.
 /// </summary>
 public static class PhaseXDatabase
 {
     static List<SpacecraftPart> _parts;
     static List<MissionScenario> _scenarios;
+
+    // Reload the catalog on every Play, so an edit to spacecraft_parts.json shows up even with Reload Domain disabled.
+    [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)]
+    static void ResetStatics()
+    {
+        _parts = null;
+        _scenarios = null;
+    }
+
+    /// <summary>Drop the cached catalog so the next access re-reads spacecraft_parts.json.</summary>
+    public static void Reload() => ResetStatics();
 
     public static IReadOnlyList<SpacecraftPart> Parts { get { if (_parts == null) Build(); return _parts; } }
     public static IReadOnlyList<MissionScenario> Scenarios { get { if (_scenarios == null) Build(); return _scenarios; } }
@@ -76,75 +88,10 @@ public static class PhaseXDatabase
         }
     }
 
-    static SpacecraftPart P(string id, string name, PartCategory cat, int unlock, float cost, float mass, float capacity,
-        float power, float data, float dv, float life, float science, float reliability, string tip,
-        bool solar = false, float keepDv = 0f)
-    {
-        return new SpacecraftPart
-        {
-            Id = id, Name = name, Category = cat, Role = RoleFor(cat), UnlockLevel = unlock,
-            CostMillionUSD = cost, MassKg = mass, MaxPayloadCapacityKg = capacity, PowerWatts = power,
-            DataRateMbps = data, DeltaV = dv, LifetimeMonths = life, ScienceScore = science,
-            Reliability = reliability, EducationalTooltip = tip, IsSolar = solar, StationKeepingDvPerMonth = keepDv
-        };
-    }
-
     static void Build()
     {
-        _parts = new List<SpacecraftPart>
-        {
-            // ---------- LAUNCH VEHICLES (capacity = kg delivered toward the mission target)
-            P("lv_small", "Small Launcher (Electron-class)", PartCategory.LaunchVehicle, 1, 7.5f, 0, 250, 0, 0, 0, 0, 0, 0.95f,
-                "Cheap dedicated ride (NASA's CAPSTONE reached the Moon this way), but it only lifts about 250 kg."),
-            P("lv_medium", "Medium Launcher (Falcon 9-class)", PartCategory.LaunchVehicle, 1, 67f, 0, 1500, 0, 0, 0, 0, 0, 0.98f,
-                "Proven workhorse with 6x the capacity of a small launcher - and about 9x the price."),
-            P("lv_heavy", "Heavy Launcher (Falcon Heavy-class)", PartCategory.LaunchVehicle, 3, 150f, 0, 6000, 0, 0, 0, 0, 0, 0.97f,
-                "Lifts huge spacecraft, but paying for capacity you don't use is a classic budget mistake."),
-
-            // ---------- ORBITS (DeltaV = insertion cost; StationKeeping = monthly upkeep)
-            P("orb_leo", "Low Earth Orbit (500 km)", PartCategory.Orbit, 1, 1f, 0, 0, 0, 0, 0, 0, 5, 1.0f,
-                "Close to home: cheap to reach and easy to talk to - the perfect place to test hardware first."),
-            P("orb_llo", "Low Lunar Polar Orbit (100 km)", PartCategory.Orbit, 2, 8f, 0, 0, 0, 0, 800, 0, 15, 0.98f,
-                "Passes over the shadowed south-pole craters, but capture costs 800 m/s and lumpy lunar gravity needs ~10 m/s every month.",
-                false, 10f),
-            P("orb_nrho", "Near-Rectilinear Halo Orbit", PartCategory.Orbit, 3, 12f, 0, 0, 0, 0, 450, 0, 10, 0.98f,
-                "Gateway's orbit: always sees Earth and the far side for relaying data, and costs only ~1 m/s per month to keep.",
-                false, 1f),
-
-            // ---------- STRUCTURE (capacity = component kg the bus can carry)
-            P("str_cubesat", "6U CubeSat Bus", PartCategory.Structure, 1, 0.8f, 4, 8, 0, 0, 0, 18, 0, 0.97f,
-                "Shoebox-sized standard bus: very cheap, but only ~8 kg of room and about 18 months of design life."),
-            P("str_espa", "ESPA-class SmallSat Bus", PartCategory.Structure, 2, 6f, 60, 350, 0, 0, 0, 60, 0, 0.985f,
-                "A 60 kg gold-foil bus that carries 350 kg of hardware for 5 years - at 7x a CubeSat's cost."),
-
-            // ---------- POWER
-            P("pwr_body", "Body-Mounted Solar Cells", PartCategory.Power, 1, 0.3f, 1, 0, 20, 0, 0, 36, 0, 0.99f,
-                "Light and simple, but small area means small power: about 20 W in full sunlight.", true),
-            P("pwr_array", "Deployable Solar Arrays", PartCategory.Power, 1, 3f, 25, 0, 300, 0, 0, 72, 0, 0.97f,
-                "Wings that unfold for 300 W - but output drops where the Sun sits low, like the lunar poles.", true),
-            P("pwr_rtg", "Radioisotope Power (MMRTG-class)", PartCategory.Power, 2, 60f, 45, 0, 110, 0, 0, 168, 0, 0.995f,
-                "Plutonium heat gives 110 W day and night for 14 years - heavy and very expensive, but works in shadow."),
-
-            // ---------- PROPULSION (capacity = reference craft mass for rated delta-V)
-            P("prop_coldgas", "Cold-Gas Thrusters", PartCategory.Propulsion, 1, 0.6f, 1.5f, 12, -2, 0, 60, 24, 0, 0.98f,
-                "Squirts compressed gas: safe and cheap, but only ~60 m/s - enough to steer or deorbit a CubeSat."),
-            P("prop_biprop", "Bipropellant Main Engine", PartCategory.Propulsion, 2, 12f, 40, 200, -15, 0, 2400, 0, 0, 0.97f,
-                "Fuel + oxidizer gives 2400 m/s for a 200 kg craft; heavier craft get less (the rocket equation)."),
-
-            // ---------- PAYLOADS
-            P("pl_camera", "Multispectral Imager", PartCategory.Payload, 1, 2f, 1.2f, 0, -6, 3, 0, 36, 25, 0.98f,
-                "Maps minerals in many colors - great science, but pictures make lots of data (3 Mbps)."),
-            P("pl_neutron", "Neutron Spectrometer (Ice Finder)", PartCategory.Payload, 2, 15f, 8, 0, -12, 0.05f, 0, 60, 45, 0.98f,
-                "Counts neutrons from the surface: hydrogen in water ice absorbs them, revealing hidden ice."),
-            P("pl_rover", "Micro Rover", PartCategory.Payload, 3, 70f, 150, 0, -60, 4, 0, 12, 70, 0.93f,
-                "Drives to the science instead of waiting for it - but it must land softly and needs a relay on the far side."),
-
-            // ---------- COMMS
-            P("com_sband", "S-Band Radio + Patch Antenna", PartCategory.Comms, 1, 0.5f, 0.3f, 0, -8, 2, 0, 48, 0, 0.98f,
-                "Small, low-power radio with ~2 Mbps downlink: fine for sensors, too slow for heavy imaging."),
-            P("com_xband", "X-Band Dish + Deep Space Network", PartCategory.Comms, 2, 8f, 6, 0, -40, 50, 0, 120, 0, 0.985f,
-                "A pointed dish plus NASA's giant DSN antennas moves 50 Mbps - but it draws 40 W."),
-        };
+        // Every part and its stats live in Resources/Data/spacecraft_parts.json (see PartsJsonLoader).
+        _parts = PartsJsonLoader.LoadAllParts();
 
         _scenarios = new List<MissionScenario>
         {

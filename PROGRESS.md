@@ -265,6 +265,24 @@ player returns to Mission Control after the flight. While set:
   ESC key presses (the test called `SetPaused` directly). Batch mode has no window focus, so the test checked the cursor
   state the game *requested*, not the OS cursor.
 
+## Data-Driven Part Catalog (JSON) ✅
+
+All 18 spacecraft parts moved out of C# into `Assets/_PhaseX/Resources/Data/spacecraft_parts.json`. `Data/PartsJsonLoader.cs`
+(`SpacecraftPartJsonDTO`, `SpacecraftPartCatalogDTO`, `LoadAllParts()`) reads it with `JsonUtility` and maps it onto the
+existing runtime `SpacecraftPart` objects, so `MissionCalculator`, the workstation GUI and the hologram table are unchanged.
+`PhaseXDatabase` no longer contains any part values and reloads the catalog on every Play. Scenarios are still in C#.
+Schema and how-to are in `ARCHITECTURE.md` section 1a. Editor menu: **PhaseX ▸ Data ▸ Validate Parts JSON / Open Parts JSON**.
+
+### Verified (2026-11-14)
+- The JSON was generated from the old C# list by script, not retyped. The four reference designs score exactly as before
+  (76.9 / 79.5 / 78.9 / 88.2).
+- Edited the file on disk (launcher cost 7.5 → 9.5, new name), pressed Play in batch mode: the part and the L1 budget
+  ($12.7M → $14.7M) changed with no C# edit. The file was restored afterwards.
+- Malformed JSON, a missing `parts` array, a duplicate id, an unknown category, a missing id and an out-of-range
+  reliability each produce a clear error; valid entries still load.
+- Station status and hologram X-ray still work on the JSON catalog. Zero compiler and runtime errors.
+- Not tested: a standalone build (only the editor was run).
+
 ### Next phases (planned)
 - (On hold) Phase 4: 4-player co-op role ownership and segment sign-off; campaign unlocks; save progress.
 - (On hold) Phase 5: polish, audio, accessibility, standalone builds, demo script.
