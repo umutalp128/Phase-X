@@ -99,10 +99,15 @@ public class TrajectorySimulator : MonoBehaviour
         var lv = PartOf(parts, PartCategory.LaunchVehicle);
         FlightMode mode = orbit == null || orbit.Id == "orb_leo" ? FlightMode.LeoOnly
             : orbit.Id == "orb_nrho" ? FlightMode.HaloOrbit : FlightMode.LowLunarOrbit;
-        bool rover = false;
-        foreach (var p in parts) if (p.Id == "pl_rover") rover = true;
+        bool rover = false, crewed = false;
+        foreach (var p in parts)
+        {
+            if (p.Id == "pl_rover") rover = true;
+            // Apollo hardware flies a crewed surface landing: descent, surface stay and return to orbit
+            if (p.Id == "pl_apollo_alsep" || p.Id == "str_apollo_csm_lm") crewed = true;
+        }
 
-        Plan = new LunarFlightPlan(mode, rover, orbit != null ? orbit.DeltaV : 0f, sc.RequiredDeltaV);
+        Plan = new LunarFlightPlan(mode, rover, orbit != null ? orbit.DeltaV : 0f, sc.RequiredDeltaV, crewed);
         DvAvailable = report.DeltaV.Value;
         DvRemaining = DvAvailable;
         SimTime = 0f;
@@ -152,7 +157,7 @@ public class TrajectorySimulator : MonoBehaviour
     public void CycleCamera() => SetCamera((SimCamera)(((int)CameraMode + 1) % 4));
 
     public string CurrentPhaseName => Plan == null ? "" : Complete && Plan.Mode == FlightMode.LeoOnly ? "LEO MISSION ORBIT" :
-        Complete ? (Plan.HasRover ? "SURFACE + RELAY OPERATIONS" : "LUNAR MISSION ORBIT") : Plan.Segments[State.Segment].Name;
+        Complete ? (Plan.Crewed ? "CREW ON THE LUNAR SURFACE" : Plan.HasRover ? "SURFACE + RELAY OPERATIONS" : "LUNAR MISSION ORBIT") : Plan.Segments[State.Segment].Name;
     public string CurrentNote => Plan == null ? "" : Plan.Segments[State.Segment].Note;
 
     public static string ModeName(FlightMode m) =>
@@ -245,11 +250,30 @@ public class TrajectorySimulator : MonoBehaviour
 
         if (Plan.HasRover)
         {
-            _rover = new GameObject("FarSideRover").transform;
+            _rover = new GameObject(Plan.Crewed ? "LunarModule" : "FarSideRover").transform;
             _rover.SetParent(_root.transform, false);
-            Prim(PrimitiveType.Cube, _rover, Vector3.zero, new Vector3(0.22f, 0.08f, 0.26f), Vector3.zero, PhaseXMaterials.Lit(new Color(0.9f, 0.9f, 0.92f), 0.5f, 0.3f));
-            Prim(PrimitiveType.Sphere, _rover, new Vector3(0, 0.08f, 0), Vector3.one * 0.12f, Vector3.zero,
-                PhaseXMaterials.Lit(new Color(0.3f, 1f, 0.6f), 0.5f, 0f, new Color(0.4f, 1.6f, 0.8f)));
+            if (Plan.Crewed)
+            {
+                // miniature Lunar Module: gold descent stage on four legs, grey ascent cabin
+                var gold = PhaseXMaterials.Lit(new Color(0.86f, 0.64f, 0.2f), 0.8f, 0.9f);
+                var grey = PhaseXMaterials.Lit(new Color(0.55f, 0.57f, 0.6f), 0.5f, 0.6f);
+                Prim(PrimitiveType.Cylinder, _rover, new Vector3(0, 0.1f, 0), new Vector3(0.24f, 0.05f, 0.24f), Vector3.zero, gold);
+                Prim(PrimitiveType.Cube, _rover, new Vector3(0, 0.22f, 0), new Vector3(0.16f, 0.14f, 0.16f), new Vector3(0, 45, 0), grey);
+                for (int i = 0; i < 4; i++)
+                {
+                    Vector3 d = Quaternion.Euler(0, i * 90f + 45f, 0) * Vector3.forward;
+                    Prim(PrimitiveType.Cylinder, _rover, d * 0.15f + new Vector3(0, 0.05f, 0), new Vector3(0.02f, 0.08f, 0.02f), new Vector3(d.z * 35f, 0, -d.x * 35f), grey);
+                    Prim(PrimitiveType.Cylinder, _rover, d * 0.2f, new Vector3(0.06f, 0.006f, 0.06f), Vector3.zero, gold);
+                }
+                Prim(PrimitiveType.Sphere, _rover, new Vector3(0, 0.32f, 0), Vector3.one * 0.07f, Vector3.zero,
+                    PhaseXMaterials.Lit(new Color(0.3f, 1f, 0.6f), 0.5f, 0f, new Color(0.4f, 1.6f, 0.8f)));
+            }
+            else
+            {
+                Prim(PrimitiveType.Cube, _rover, Vector3.zero, new Vector3(0.22f, 0.08f, 0.26f), Vector3.zero, PhaseXMaterials.Lit(new Color(0.9f, 0.9f, 0.92f), 0.5f, 0.3f));
+                Prim(PrimitiveType.Sphere, _rover, new Vector3(0, 0.08f, 0), Vector3.one * 0.12f, Vector3.zero,
+                    PhaseXMaterials.Lit(new Color(0.3f, 1f, 0.6f), 0.5f, 0f, new Color(0.4f, 1.6f, 0.8f)));
+            }
             _rover.gameObject.SetActive(false);
         }
     }
@@ -259,7 +283,7 @@ public class TrajectorySimulator : MonoBehaviour
     {
         string id = lv != null ? lv.Id : "lv_small";
         float s = id == "lv_pegasus_xl" ? 0.62f : id == "lv_small" ? 0.7f : id == "lv_firefly_alpha" ? 0.82f
-            : id == "lv_atlas_v" ? 0.97f : id == "lv_vulcan_centaur" ? 1.1f : id == "lv_heavy" ? 1.15f : 1f;
+            : id == "lv_atlas_v" ? 0.97f : id == "lv_vulcan_centaur" ? 1.1f : id == "lv_heavy" || id == "lv_saturn_v" ? 1.15f : 1f;
         var root = new GameObject("Rocket").transform;
         root.SetParent(parent, false);
         root.localScale = Vector3.one * 0.32f * s;
@@ -277,6 +301,14 @@ public class TrajectorySimulator : MonoBehaviour
         Prim(PrimitiveType.Cylinder, root, new Vector3(0, 0, 0.35f), new Vector3(0.31f, 0.03f, 0.31f), new Vector3(90, 0, 0), dark);
         for (int i = 0; i < 4; i++)
             Prim(PrimitiveType.Cube, root, Quaternion.Euler(0, 0, i * 90f) * new Vector3(0.2f, 0, -0.75f), new Vector3(0.18f, 0.02f, 0.3f), new Vector3(0, 0, i * 90f), dark);
+        if (id == "lv_saturn_v")
+        {
+            // Saturn V: black roll-pattern bands on the white stages and the launch escape tower on the nose
+            foreach (float z in new[] { -0.82f, -0.3f, 0.12f, 0.56f })
+                Prim(PrimitiveType.Cylinder, root, new Vector3(0, 0, z), new Vector3(0.305f, 0.05f, 0.305f), new Vector3(90, 0, 0), dark);
+            Prim(PrimitiveType.Cylinder, root, new Vector3(0, 0, 1.42f), new Vector3(0.035f, 0.22f, 0.035f), new Vector3(90, 0, 0), white);
+            Prim(PrimitiveType.Cylinder, root, new Vector3(0, 0, 1.3f), new Vector3(0.07f, 0.05f, 0.07f), new Vector3(90, 0, 0), dark);
+        }
         if (id == "lv_pegasus_xl")
         {
             // swept delta wing: a flat square turned 45 degrees, so its corners stick out as two triangles
@@ -391,6 +423,7 @@ public class TrajectorySimulator : MonoBehaviour
             double met = Plan.MetAt(Plan.ScriptEnd);
             string arrived = Plan.Mode == FlightMode.LeoOnly
                 ? "Hardware tests complete in Low Earth Orbit. Pathfinder ready to deorbit."
+                : Plan.Crewed ? "The Lunar Module has landed in the Sea of Tranquility. Crew surface operations begin; the Command Module keeps watch in orbit."
                 : Plan.HasRover ? "Rover landed on the far side. Relay link rover -> orbiter -> Earth established."
                 : "Stable lunar orbit achieved. Science operations begin.";
             AddLog(met, arrived);
@@ -432,7 +465,8 @@ public class TrajectorySimulator : MonoBehaviour
             if (st.RoverVisible)
             {
                 _rover.localPosition = st.RoverPosition;
-                _rover.rotation = Quaternion.LookRotation(Vector3.Cross(Plan.FarSideDir(t), Vector3.up), Plan.FarSideDir(t));
+                Vector3 siteUp = Plan.LandingSiteDir(t);
+                _rover.rotation = Quaternion.LookRotation(Vector3.Cross(siteUp, Vector3.up), siteUp);
                 _linkRover.enabled = st.RoverLanded;
                 if (st.RoverLanded)
                 {

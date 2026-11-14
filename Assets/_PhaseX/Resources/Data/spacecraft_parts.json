@@ -128,6 +128,24 @@
       "educationalTooltip": "Lifts huge spacecraft, but paying for capacity you don't use is a classic budget mistake."
     },
     {
+      "partId": "lv_saturn_v",
+      "partName": "Saturn V Super-Heavy Launcher",
+      "category": "LaunchVehicle",
+      "unlockLevel": 3,
+      "costMillionUSD": 185.0,
+      "massKg": 0.0,
+      "maxPayloadCapacityKg": 43500.0,
+      "powerWatts": 0.0,
+      "dataRateMbps": 0.0,
+      "deltaV": 0.0,
+      "stationKeepingDvPerMonth": 0.0,
+      "lifetimeMonths": 0.0,
+      "scienceScore": 0.0,
+      "reliability": 0.995,
+      "isSolar": false,
+      "educationalTooltip": "NASA's 110.6-meter Apollo Moon rocket (5x F-1 + 5x J-2 engines): sends 43,500 kg to Trans-Lunar Injection with a 100% flight success record."
+    },
+    {
       "partId": "orb_leo",
       "partName": "Low Earth Orbit (500 km)",
       "category": "Orbit",
@@ -218,6 +236,24 @@
       "educationalTooltip": "A 60 kg gold-foil bus that carries 350 kg of hardware for 5 years - at 7x a CubeSat's cost."
     },
     {
+      "partId": "str_apollo_csm_lm",
+      "partName": "Apollo CSM 'Columbia' + Lunar Module 'Eagle'",
+      "category": "Structure",
+      "unlockLevel": 3,
+      "costMillionUSD": 95.0,
+      "massKg": 5500.0,
+      "maxPayloadCapacityKg": 25000.0,
+      "powerWatts": 180.0,
+      "dataRateMbps": 0.0,
+      "deltaV": 0.0,
+      "stationKeepingDvPerMonth": 0.0,
+      "lifetimeMonths": 12.0,
+      "scienceScore": 20.0,
+      "reliability": 0.992,
+      "isSolar": false,
+      "educationalTooltip": "Pressurized 3-astronaut Command/Service Module docked nose-to-nose with the Lunar Excursion Module; includes LH2/O2 fuel cells and life support."
+    },
+    {
       "partId": "pwr_body",
       "partName": "Body-Mounted Solar Cells",
       "category": "Power",
@@ -306,6 +342,24 @@
       "reliability": 0.97,
       "isSolar": false,
       "educationalTooltip": "Fuel + oxidizer gives 2400 m/s for a 200 kg craft; heavier craft get less (the rocket equation)."
+    },
+    {
+      "partId": "prop_apollo_sps_lmde",
+      "partName": "Apollo SPS + Lunar Module Descent/Ascent Engines",
+      "category": "Propulsion",
+      "unlockLevel": 3,
+      "costMillionUSD": 55.0,
+      "massKg": 8500.0,
+      "maxPayloadCapacityKg": 16000.0,
+      "powerWatts": -20.0,
+      "dataRateMbps": 0.0,
+      "deltaV": 2900.0,
+      "stationKeepingDvPerMonth": 0.0,
+      "lifetimeMonths": 12.0,
+      "scienceScore": 0.0,
+      "reliability": 0.995,
+      "isSolar": false,
+      "educationalTooltip": "Hypergolic AJ10-137 Service Propulsion System + throttleable Lunar Module Descent & Ascent engines: delivers 2,900 m/s for a 16-ton crewed stack."
     },
     {
       "partId": "pl_camera",
@@ -414,6 +468,24 @@
       "reliability": 0.95,
       "isSolar": false,
       "educationalTooltip": "NASA VIPER's 1-meter rotary drill + MSolo spectrometer (22 kg): cores into dark polar craters for water ice, but draws 85 W."
+    },
+    {
+      "partId": "pl_apollo_alsep",
+      "partName": "Apollo EVA Crew & ALSEP Surface Package",
+      "category": "Payload",
+      "unlockLevel": 3,
+      "costMillionUSD": 35.0,
+      "massKg": 220.0,
+      "maxPayloadCapacityKg": 0.0,
+      "powerWatts": -45.0,
+      "dataRateMbps": 5.0,
+      "deltaV": 0.0,
+      "stationKeepingDvPerMonth": 0.0,
+      "lifetimeMonths": 24.0,
+      "scienceScore": 135.0,
+      "reliability": 0.99,
+      "isSolar": false,
+      "educationalTooltip": "Astronaut EVA suits, Lunar Laser Ranging Retroreflector, Passive Seismometer, and 21.5 kg of geological sample return containers (+135 Science)."
     },
     {
       "partId": "com_sband",

@@ -27,7 +27,7 @@ namespace PhaseX.Station
         public Light holoLight;
 
         /// <summary>Launch vehicles with their own miniature, in ascending lift capacity.</summary>
-        static readonly string[] LvIds = { "lv_small", "lv_pegasus_xl", "lv_firefly_alpha", "lv_medium", "lv_atlas_v", "lv_vulcan_centaur", "lv_heavy" };
+        static readonly string[] LvIds = { "lv_small", "lv_pegasus_xl", "lv_firefly_alpha", "lv_medium", "lv_atlas_v", "lv_vulcan_centaur", "lv_heavy", "lv_saturn_v" };
 
         MissionCalculator _calc;
         Transform _model;
@@ -117,7 +117,7 @@ namespace PhaseX.Station
             var lv = _calc.Selected(PartCategory.LaunchVehicle);
             // a launcher added to the JSON without its own miniature borrows the nearest one by lift capacity
             int show = lv == null ? -1 : System.Array.IndexOf(LvIds, lv.Id);
-            if (lv != null && show < 0) show = lv.MaxPayloadCapacityKg < 400f ? 0 : lv.MaxPayloadCapacityKg < 2000f ? 3 : 6;
+            if (lv != null && show < 0) show = lv.MaxPayloadCapacityKg < 400f ? 0 : lv.MaxPayloadCapacityKg < 2000f ? 3 : lv.MaxPayloadCapacityKg < 20000f ? 6 : 7;
             for (int i = 0; i < lvMinis.Length; i++)
                 if (lvMinis[i] != null) lvMinis[i].SetActive(i == show);
             if (lvLabel != null)
@@ -370,6 +370,27 @@ namespace PhaseX.Station
                         Stack(1.45f, 0.18f, 0.6f, white, silver, white, 0.19f, black);
                         Boosters(4, 0.55f, 0.062f, 0.18f, white, 14f);
                         break;
+                    case "lv_saturn_v":         // Saturn V: three white stages with black roll bands, five F-1 bells, escape tower
+                    {
+                        const float h = 1.68f, w = 0.2f;
+                        StationKit.Prim(PrimitiveType.Cylinder, m, "Stage1", new Vector3(0, h * 0.2f, 0), new Vector3(w, h * 0.2f, w), white);              // S-IC
+                        StationKit.Prim(PrimitiveType.Cylinder, m, "Stage2", new Vector3(0, h * 0.53f, 0), new Vector3(w, h * 0.13f, w), white);            // S-II
+                        StationKit.Prim(PrimitiveType.Cylinder, m, "Taper", new Vector3(0, h * 0.675f, 0), new Vector3(w * 0.86f, h * 0.015f, w * 0.86f), black);
+                        StationKit.Prim(PrimitiveType.Cylinder, m, "Stage3", new Vector3(0, h * 0.76f, 0), new Vector3(w * 0.72f, h * 0.07f, w * 0.72f), white);   // S-IVB
+                        StationKit.Prim(PrimitiveType.Cylinder, m, "Apollo", new Vector3(0, h * 0.87f, 0), new Vector3(w * 0.55f, h * 0.04f, w * 0.55f), silver);  // spacecraft
+                        StationKit.Prim(PrimitiveType.Sphere, m, "Nose", new Vector3(0, h * 0.91f, 0), new Vector3(w * 0.55f, w * 0.7f, w * 0.55f), white);
+                        StationKit.Prim(PrimitiveType.Cylinder, m, "EscapeTower", new Vector3(0, h * 0.99f, 0), new Vector3(w * 0.1f, h * 0.06f, w * 0.1f), white);
+                        foreach (float y in new[] { 0.035f, 0.2f, 0.4f, 0.46f, 0.66f })                                                                     // black roll-pattern bands
+                            StationKit.Prim(PrimitiveType.Cylinder, m, "Band", new Vector3(0, h * y, 0), new Vector3(w * 1.03f, h * 0.018f, w * 1.03f), black);
+                        for (int k = 0; k < 4; k++)                                                                                                         // fins + outer F-1 engines
+                        {
+                            var d = Quaternion.Euler(0, k * 90f + 45f, 0) * Vector3.forward;
+                            StationKit.Box(m, "Fin", d * (w * 0.56f) + Vector3.up * 0.06f, new Vector3(0.012f, 0.11f, 0.09f), black, false, new Vector3(0, k * 90f + 45f, 0));
+                            StationKit.Prim(PrimitiveType.Cylinder, m, "F1", d * (w * 0.3f) + Vector3.down * 0.012f, new Vector3(w * 0.3f, 0.016f, w * 0.3f), grey);
+                        }
+                        StationKit.Prim(PrimitiveType.Cylinder, m, "F1", Vector3.down * 0.012f, new Vector3(w * 0.3f, 0.016f, w * 0.3f), grey);              // centre F-1
+                        break;
+                    }
                     default:                    // Falcon Heavy: three full-size liquid cores
                         Stack(1.5f, 0.16f, 0.68f, white, white, white, 0.18f, black);
                         Boosters(2, 1.02f, 0.16f, 0.16f, white, 0f);

@@ -252,6 +252,70 @@ public class ProceduralSpacecraftView : MonoBehaviour
         Prim(PrimitiveType.Cylinder, espa, new Vector3(0, 0.92f, 0), new Vector3(1.8f, 0.03f, 1.8f), Vector3.zero, PhaseXMaterials.Lit(Alu, 0.6f, 0.8f));
         Prim(PrimitiveType.Cylinder, espa, new Vector3(0, -0.92f, 0), new Vector3(1.8f, 0.03f, 1.8f), Vector3.zero, PhaseXMaterials.Lit(Alu, 0.6f, 0.8f));
 
+        // --- Apollo: Service Module (the "bus" at the origin), Command Module on top, Lunar Module docked nose-to-nose
+        var apollo = Module("str_apollo_csm_lm");
+        var silver = PhaseXMaterials.Lit(new Color(0.78f, 0.8f, 0.84f), 0.8f, 0.85f);
+        var foil = PhaseXMaterials.Lit(Gold, 0.85f, 0.9f);
+        var lmGrey = PhaseXMaterials.Lit(new Color(0.42f, 0.44f, 0.47f), 0.45f, 0.6f);
+        Prim(PrimitiveType.Cylinder, apollo, Vector3.zero, new Vector3(1.7f, 0.9f, 1.7f), Vector3.zero, silver);                       // Service Module
+        for (int i = 0; i < 4; i++)                                                                                                    // gold radiator panels
+            Prim(PrimitiveType.Cube, apollo, Quaternion.Euler(0, i * 90f + 45f, 0) * new Vector3(0, -0.15f, 0.84f), new Vector3(0.7f, 1.1f, 0.05f), new Vector3(0, i * 90f + 45f, 0), foil);
+        Prim(PrimitiveType.Cylinder, apollo, new Vector3(0, 0.92f, 0), new Vector3(1.72f, 0.03f, 1.72f), Vector3.zero, PhaseXMaterials.Lit(Dark, 0.5f, 0.6f));
+        // Command Module: a cone made of stacked rings, with crew windows
+        float[] cmR = { 1.66f, 1.36f, 1.02f, 0.66f, 0.34f };
+        for (int i = 0; i < cmR.Length; i++)
+            Prim(PrimitiveType.Cylinder, apollo, new Vector3(0, 1.03f + i * 0.17f, 0), new Vector3(cmR[i], 0.085f, cmR[i]), Vector3.zero, i == 0 ? silver : PhaseXMaterials.Lit(White, 0.6f, 0.3f));
+        for (int s = -1; s <= 1; s += 2)
+            Prim(PrimitiveType.Cube, apollo, new Vector3(s * 0.2f, 1.36f, -0.5f), new Vector3(0.16f, 0.12f, 0.05f), new Vector3(-28f, 0, 0), PhaseXMaterials.Lit(Dark, 0.95f, 0.2f, new Color(0.05f, 0.2f, 0.35f)));
+        Prim(PrimitiveType.Cylinder, apollo, new Vector3(0, 1.9f, 0), new Vector3(0.22f, 0.1f, 0.22f), Vector3.zero, PhaseXMaterials.Lit(Alu, 0.6f, 0.9f));   // docking tunnel
+        // Lunar Module, upside down relative to the CSM (docked nose-to-nose): ascent stage, then descent stage with legs
+        Prim(PrimitiveType.Cube, apollo, new Vector3(0, 2.3f, 0), new Vector3(0.95f, 0.62f, 0.8f), Vector3.zero, lmGrey);                // ascent stage cabin
+        Prim(PrimitiveType.Cube, apollo, new Vector3(0, 2.3f, -0.42f), new Vector3(0.62f, 0.4f, 0.12f), Vector3.zero, PhaseXMaterials.Lit(Dark, 0.5f, 0.5f));
+        for (int s = -1; s <= 1; s += 2)
+        {
+            Prim(PrimitiveType.Cube, apollo, new Vector3(s * 0.2f, 2.32f, -0.49f), new Vector3(0.16f, 0.16f, 0.03f), new Vector3(0, 0, s * 45f), PhaseXMaterials.Lit(Dark, 0.95f, 0.2f, new Color(0.05f, 0.2f, 0.35f)));
+            Prim(PrimitiveType.Sphere, apollo, new Vector3(s * 0.62f, 2.28f, 0.1f), Vector3.one * 0.42f, Vector3.zero, lmGrey);         // propellant tanks
+        }
+        Prim(PrimitiveType.Cylinder, apollo, new Vector3(0, 2.9f, 0), new Vector3(1.5f, 0.28f, 1.5f), new Vector3(0, 22.5f, 0), foil);   // descent stage
+        Prim(PrimitiveType.Cube, apollo, new Vector3(0, 2.9f, 0), new Vector3(1.3f, 0.5f, 1.3f), new Vector3(0, 45f, 0), foil);          // squared-off corners read as an octagon
+        Prim(PrimitiveType.Cylinder, apollo, new Vector3(0, 3.25f, 0), new Vector3(0.5f, 0.1f, 0.5f), Vector3.zero, PhaseXMaterials.Lit(Dark, 0.5f, 0.7f)); // descent engine bell
+        for (int i = 0; i < 4; i++)
+        {
+            var rot = Quaternion.Euler(0, i * 90f, 0);
+            var leg = Prim(PrimitiveType.Cylinder, apollo, rot * new Vector3(0, 3.2f, 0.98f), new Vector3(0.05f, 0.5f, 0.05f), Vector3.zero, PhaseXMaterials.Lit(Alu, 0.6f, 0.9f));
+            leg.localRotation = rot * Quaternion.Euler(32f, 0, 0);
+            Prim(PrimitiveType.Cylinder, apollo, rot * new Vector3(0, 3.62f, 1.25f), new Vector3(0.3f, 0.02f, 0.3f), Vector3.zero, foil);   // footpad
+        }
+
+        // --- Apollo propulsion: big AJ10-137 SPS bell under the Service Module + four RCS quads on the rim
+        var sps = Module("prop_apollo_sps_lmde");
+        var bell = PhaseXMaterials.Lit(new Color(0.2f, 0.2f, 0.22f), 0.55f, 0.8f);
+        Prim(PrimitiveType.Cylinder, sps, new Vector3(0, -1.0f, 0), new Vector3(0.4f, 0.1f, 0.4f), Vector3.zero, PhaseXMaterials.Lit(Alu, 0.6f, 0.9f));
+        float[] bellR = { 0.5f, 0.72f, 0.94f, 1.12f, 1.26f };
+        for (int i = 0; i < bellR.Length; i++)
+            Prim(PrimitiveType.Cylinder, sps, new Vector3(0, -1.2f - i * 0.16f, 0), new Vector3(bellR[i], 0.08f, bellR[i]), Vector3.zero, bell);
+        Prim(PrimitiveType.Cylinder, sps, new Vector3(0, -1.93f, 0), new Vector3(1.1f, 0.01f, 1.1f), Vector3.zero, PhaseXMaterials.Lit(new Color(0.4f, 0.6f, 1f), 0.5f, 0f, new Color(0.5f, 1.1f, 2.6f)));
+        for (int i = 0; i < 4; i++)
+        {
+            var rot = Quaternion.Euler(0, i * 90f, 0);
+            Prim(PrimitiveType.Cube, sps, rot * new Vector3(0, 0.55f, R + 0.06f), new Vector3(0.16f, 0.16f, 0.1f), new Vector3(0, i * 90f, 0), PhaseXMaterials.Lit(Alu, 0.6f, 0.9f));
+            for (int k = 0; k < 4; k++)
+            {
+                Vector3 d = Quaternion.Euler(0, 0, k * 90f) * Vector3.up * 0.13f;
+                Prim(PrimitiveType.Cylinder, sps, rot * (new Vector3(0, 0.55f, R + 0.13f) + d), new Vector3(0.06f, 0.05f, 0.06f), new Vector3(0, i * 90f, k * 90f), bell);
+            }
+        }
+
+        // --- Apollo ALSEP surface package, stowed on the Lunar Module descent stage
+        var alsep = Module("pl_apollo_alsep");
+        Prim(PrimitiveType.Cube, alsep, new Vector3(0.95f, 2.9f, 0), new Vector3(0.32f, 0.34f, 0.5f), Vector3.zero, PhaseXMaterials.Lit(White, 0.5f, 0.2f));                 // central station
+        Prim(PrimitiveType.Cylinder, alsep, new Vector3(0.95f, 2.9f, 0.45f), new Vector3(0.26f, 0.13f, 0.26f), new Vector3(0, 0, 90), foil);                                  // passive seismometer
+        Prim(PrimitiveType.Cube, alsep, new Vector3(1.0f, 2.92f, -0.48f), new Vector3(0.05f, 0.32f, 0.32f), new Vector3(0, 0, -25f), PhaseXMaterials.Lit(new Color(0.3f, 0.5f, 0.9f), 0.95f, 0.4f, new Color(0.1f, 0.3f, 0.8f)));   // laser retroreflector
+        Prim(PrimitiveType.Cylinder, alsep, new Vector3(1.25f, 2.75f, 0), new Vector3(0.02f, 0.36f, 0.02f), new Vector3(0, 0, 90), PhaseXMaterials.Lit(Alu, 0.6f, 0.9f));     // flag pole
+        Prim(PrimitiveType.Cube, alsep, new Vector3(1.48f, 2.75f, 0.14f), new Vector3(0.2f, 0.012f, 0.26f), Vector3.zero, PhaseXMaterials.Lit(new Color(0.75f, 0.1f, 0.12f), 0.4f, 0f));   // flag: red field
+        Prim(PrimitiveType.Cube, alsep, new Vector3(1.53f, 2.757f, 0.07f), new Vector3(0.1f, 0.012f, 0.12f), Vector3.zero, PhaseXMaterials.Lit(new Color(0.1f, 0.15f, 0.5f), 0.4f, 0f));   // flag: blue canton
+        Prim(PrimitiveType.Cube, alsep, new Vector3(1.46f, 2.757f, 0.2f), new Vector3(0.2f, 0.012f, 0.03f), Vector3.zero, PhaseXMaterials.Lit(White, 0.4f, 0f));                           // flag: white stripe
+
         // --- body-mounted solar cells
         var body = Module("pwr_body");
         Prim(PrimitiveType.Cube, body, new Vector3(R + 0.03f, 0, 0), new Vector3(0.03f, 1.3f, 1.1f), Vector3.zero, PhaseXMaterials.Lit(Cell, 0.9f, 0.4f));
@@ -560,6 +624,11 @@ public class ProceduralSpacecraftView : MonoBehaviour
         return g;
     }
 
+    void PlaceModule(string partId, Vector3 localPosition)
+    {
+        if (_modules.TryGetValue(partId, out var go) && go != null) go.transform.localPosition = localPosition;
+    }
+
     /// <summary>Show/hide modules to match the current selection; newly added modules pop in.</summary>
     public void Refresh()
     {
@@ -573,9 +642,16 @@ public class ProceduralSpacecraftView : MonoBehaviour
         }
         bool hasBus = calc.Selected(PartCategory.Structure) != null;
         _frame.SetActive(!hasBus);
+        // On the Apollo stack the top of the bus is taken by the Command Module, so parts that normally sit on top
+        // move to the side of the Service Module (where Apollo carried its high-gain antenna).
+        bool apolloBus = calc.IsSelected("str_apollo_csm_lm");
+        PlaceModule("com_xband", apolloBus ? new Vector3(1.2f, -1.45f, -0.35f) : Vector3.zero);
+        PlaceModule("com_sband", apolloBus ? new Vector3(0.78f, -1.0f, 0f) : Vector3.zero);
+        PlaceModule("pl_neutron", apolloBus ? new Vector3(-0.72f, -1.2f, 0f) : Vector3.zero);
         UpdateOrbit(calc.Selected(PartCategory.Orbit));
         if (!_userZoomed)
-            _distT = 9f + (calc.IsSelected("pwr_array") ? 6f : 0f) + (calc.IsSelected("com_xband") || calc.IsSelected("prop_biprop") ? 1f : 0f);
+            _distT = 9f + (calc.IsSelected("pwr_array") ? 6f : 0f) + (calc.IsSelected("com_xband") || calc.IsSelected("prop_biprop") ? 1f : 0f)
+                   + (calc.IsSelected("str_apollo_csm_lm") ? 5f : 0f);   // the docked Apollo stack is tall
     }
 
     static IEnumerable<(Vector3 pos, Vector3 scale)> BoxEdges(Vector3 h, float t)

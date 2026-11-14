@@ -397,7 +397,7 @@ public class CrisisEventManager : MonoBehaviour
     CrisisEvent BuildBlackout()
     {
         var mode = _sim.Plan.Mode;
-        bool rover = _sim.Plan.HasRover;
+        bool rover = _sim.Plan.HasRover && !_sim.Plan.Crewed;   // the relay-dropout story is the far-side rover's
         bool xband = Has("com_xband");
         string desc = rover
             ? "The rover is descending behind the lunar limb. Its relay link to the orbiter is dropping packets, and the descent " +

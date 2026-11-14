@@ -214,7 +214,7 @@ public partial class PhaseXRuntimeUI
         {
             var r = new Rect(vr.center.x - 300, vr.yMax - 70, 600, 44);
             Fill(r, new Color(0.04f, 0.18f, 0.1f, 0.9f));
-            GUI.Label(r, Col(sim.Plan.Mode == FlightMode.LeoOnly ? "MISSION ORBIT ACHIEVED - TESTS COMPLETE" : sim.Plan.HasRover ? "TOUCHDOWN - RELAY LINK ESTABLISHED" : "LUNAR ORBIT ACHIEVED", Green),
+            GUI.Label(r, Col(sim.Plan.Mode == FlightMode.LeoOnly ? "MISSION ORBIT ACHIEVED - TESTS COMPLETE" : sim.Plan.Crewed ? "TOUCHDOWN - TRANQUILITY BASE" : sim.Plan.HasRover ? "TOUCHDOWN - RELAY LINK ESTABLISHED" : "LUNAR ORBIT ACHIEVED", Green),
                 Style(_labelBold, 20, TextAnchor.MiddleCenter));
         }
 

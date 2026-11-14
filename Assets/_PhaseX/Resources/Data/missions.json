@@ -169,6 +169,27 @@
       "RecommendedPayloadIds": ["pl_lola_lidar", "pl_mag_plasma", "pl_neutron"]
     },
     {
+      "Id": "nasa_apollo11",
+      "Title": "Apollo 11 Crewed Lunar Landing",
+      "ShortName": "APOLLO 11 CREW",
+      "DifficultyLevel": 3,
+      "Objective": "Land astronauts on the Moon (Sea of Tranquility), deploy the Apollo ALSEP surface experiments, and return safely (92%+ reliability).",
+      "Briefing": "July 1969 — 'Landing a man on the Moon and returning him safely to the Earth.' A human lunar landing requires a Saturn V super-heavy rocket, a pressurized Crew Command & Lunar Module stack, high-thrust hypergolic descent/ascent propulsion (1,800 m/s landing & ascent delta-V on top of lunar orbit insertion), high-rate telemetry, and at least 92% mission reliability for crew safety.",
+      "MaxBudget": 420.0,
+      "TargetScience": 160.0,
+      "RequiredDeltaV": 1800.0,
+      "RequiredLifetimeMonths": 6.0,
+      "MinReliability": 0.92,
+      "SolarEfficiency": 1.0,
+      "CheckDataBottleneck": true,
+      "CheckDeltaV": true,
+      "EnableCrisisEvents": true,
+      "IsSandbox": false,
+      "AllowedOrbitIds": ["orb_llo"],
+      "RealMissionBackground": "Launched on July 16, 1969 atop a 110.6-meter Saturn V rocket (43,500 kg to TLI), Apollo 11 carried Neil Armstrong, Buzz Aldrin, and Michael Collins in Command/Service Module 'Columbia' (14,690 kg) and Lunar Module 'Eagle' (15,103 kg). Eagle landed in Mare Tranquillitatis, deployed the laser retroreflector and passive seismometer, and returned 21.55 kg of Moon rocks.",
+      "RecommendedPayloadIds": ["pl_apollo_alsep"]
+    },
+    {
       "Id": "sandbox",
       "Title": "Sandbox Mission Lab",
       "ShortName": "SANDBOX",

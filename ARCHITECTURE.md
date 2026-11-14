@@ -123,7 +123,7 @@ If the file is missing or unusable, `PhaseXDatabase.BuiltInScenarios()` supplies
 | `RealMissionBackground` | string | Real-world background on the 3D briefing board |
 | `RecommendedPayloadIds` | string[] | Payload part ids to highlight ("MISSION PICK" on the card, listed in both briefings) |
 
-**The 9 missions**
+**The 10 missions**
 
 | # | `Id` | Level | Budget | Science | Destination |
 |---|---|---|---|---|---|
@@ -135,7 +135,8 @@ If the file is missing or unusable, `PhaseXDatabase.BuiltInScenarios()` supplies
 | F6 | `lvl3_farside` | 3 | $320M | 90 | NRHO |
 | F7 | `nasa_viper` | 3 | $360M | 130 | LLO or NRHO, solar 45%, 850 m/s descent |
 | F8 | `msn_cislunar_survey` | 3 | $240M | 110 | LLO or NRHO, 24 months |
-| F9 | `sandbox` | — | $1B | 100 | any |
+| F9 | `nasa_apollo11` | 3 | $420M | 160 | LLO, crewed landing, 92% reliability |
+| — | `sandbox` | — | $1B | 100 | any (header button only: there are ten missions and nine F-keys) |
 
 **Adding a mission:** add an object to `missions.json` and press Play. `PhaseX ▸ Data ▸ Validate Missions JSON` checks ids,
 ranges and that every orbit and payload id exists in the part file. Check that the mission can actually be won: the
@@ -143,6 +144,62 @@ validator does not.
 
 **Header:** up to four missions get one row of large buttons; more become a two-row grid
 (`PhaseXRuntimeUI.ScenarioButtonRect`), which stays right of the mission title for up to 12 missions.
+
+### Apollo 11 hardware
+
+Four parts make the crewed mission possible; all are Level 3 and live in `spacecraft_parts.json`:
+
+| `partId` | Role | Key numbers |
+|---|---|---|
+| `lv_saturn_v` | Launch vehicle | lifts 43,500 kg, $185M, 99.5% |
+| `str_apollo_csm_lm` | Structure (CSM + Lunar Module) | 5,500 kg, carries 25,000 kg, **+180 W** from fuel cells, 20 science |
+| `prop_apollo_sps_lmde` | Propulsion | 2,900 m/s for a 16,000 kg stack, 8,500 kg |
+| `pl_apollo_alsep` | Payload (EVA crew + ALSEP) | 135 science, 5 Mbps, 220 kg |
+
+Two calculator rules were generalised for them: science is summed over **all** parts (the crewed bus carries 20), and
+a "power source" is **any part that generates power** (the bus's fuel cells count; no solar array is needed).
+
+A design containing `str_apollo_csm_lm` or `pl_apollo_alsep` flies a **crewed landing**: `LunarFlightPlan.Crewed` adds a
+"CREWED LUNAR LANDING" segment after orbit insertion (from low lunar orbit, on the near side), the simulator shows a
+miniature Lunar Module descending, and the mission's `RequiredDeltaV` is spent on descent and ascent.
+
+On the Apollo stack the Command Module occupies the top of the bus, so `ProceduralSpacecraftView.Refresh()` moves the
+top-mounted parts (X-band dish, S-band antenna, neutron spectrometer) to the side of the Service Module.
+
+## 1d. Save game — `PhaseXSaveSystem`
+
+The whole game state is one readable JSON file: `Application.persistentDataPath/phasex_save.json`
+(`PhaseXSaveData`, written with `JsonUtility`).
+
+| Saved | Fields |
+|---|---|
+| Mission and design | `activeScenarioId`, `selectedPartIds`, `cmlPhase`, `roleFilter` |
+| Player | `hasPlayerPose`, `playerPosition`, `playerYaw`, `playerPitch`, `thirdPerson`, `inMonitorMode` |
+| Progress | `engineerXp`, `missionsFlown`, `badges`, `boardChecked`, `hologramInspected`, `launched`, `missionRecords[]` (`scenarioId`, `bestScore`, `bestStars`) |
+| Settings | `mouseSensitivity`, `masterVolume` |
+
+| When | What happens |
+|---|---|
+| Game start | `PhaseXBootstrap.Boot()` calls `LoadAndRestore()`. No file: fresh start on mission 1 |
+| Application quits (also stopping Play mode) | `Application.quitting` → `Save()` |
+| A flight ends | `GameViewModeManager.ReturnFromFlight()` → `Save()` |
+| Pause menu ▸ SAVE GAME | `Save()` |
+| Pause menu ▸ QUIT GAME | `Save()`, then quit |
+| Pause menu ▸ RESET PROGRESS ▸ YES | `ResetAllProgress()`: deletes the file, wipes XP, badges and records, loads mission 1 with an empty design, moves the player to the spawn point. Sensitivity and volume are kept |
+
+Details worth knowing:
+- **The file is the source of truth.** On load, `StationProgress.RestoreFromSave()` overwrites the PlayerPrefs copy of XP,
+  badges and records to match it.
+- **Writes are atomic:** the JSON goes to `phasex_save.json.tmp` first and is then swapped in.
+- **A flight in progress is not saved.** Loading always resumes in the station with the design as it was. A save made at
+  the CAD monitor resumes at the monitor.
+- **Bad files never block start-up.** An unreadable file is ignored (and left on disk until the next save); a save that
+  names a removed mission falls back to mission 1; removed or locked parts are skipped; a position outside the room is ignored.
+- **Tests:** set the `PHASEX_SAVE_PATH` environment variable to redirect the file, so automated runs never touch a real save.
+- `MissionCalculator.RestoreDesign(scenario, partIds)` loads a mission and its design in one silent step (no part sounds).
+
+RESET PROGRESS is two steps: the button only opens a "CONFIRM FULL RESET" dialog. Nothing is deleted until
+YES, RESET EVERYTHING; NO or ESC cancels. It is disabled during a launch.
 
 ## 1c. Shaders in player builds — `Resources/Materials`
 

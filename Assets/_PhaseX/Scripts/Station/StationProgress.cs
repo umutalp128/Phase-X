@@ -99,6 +99,68 @@ namespace PhaseX.Station
             return true;
         }
 
+        // ------------------------------------------------------------------ save file support
+
+        /// <summary>
+        /// Replace all progress with the contents of a save file and bring PlayerPrefs in line with it.
+        /// <paramref name="knownScenarioIds"/> lists every mission, so records missing from the file are cleared.
+        /// </summary>
+        public static void RestoreFromSave(int xp, int flown, IEnumerable<string> badges,
+            IEnumerable<(string id, float score, int stars)> records, IEnumerable<string> knownScenarioIds)
+        {
+            _loaded = true;
+            _xp = Mathf.Max(0, xp);
+            _flown = Mathf.Max(0, flown);
+            _badges.Clear();
+            if (badges != null)
+                foreach (var b in badges)
+                    if (!string.IsNullOrEmpty(b) && !_badges.Contains(b)) _badges.Add(b.Replace("|", "/"));
+            ForgetRecords(knownScenarioIds);
+            if (records != null)
+                foreach (var r in records)
+                {
+                    if (string.IsNullOrEmpty(r.id)) continue;
+                    float score = Mathf.Clamp(r.score, 0f, 100f);
+                    int stars = Mathf.Clamp(r.stars, 0, 3);
+                    BestScores[r.id] = score;
+                    BestStarsById[r.id] = stars;
+                    PlayerPrefs.SetFloat(ScoreKey(r.id), score);
+                    PlayerPrefs.SetInt(StarsKey(r.id), stars);
+                }
+            Save();
+            OnChanged?.Invoke();
+        }
+
+        /// <summary>Wipe XP, missions flown, badges, every mission record and the checklist (memory and PlayerPrefs).</summary>
+        public static void ClearAll(IEnumerable<string> knownScenarioIds)
+        {
+            _loaded = true;
+            _xp = 0; _flown = 0;
+            _badges.Clear();
+            ForgetRecords(knownScenarioIds);
+            BoardChecked = false; HologramInspected = false; Launched = false;
+            PlayerPrefs.DeleteKey(XpKey);
+            PlayerPrefs.DeleteKey(FlownKey);
+            PlayerPrefs.DeleteKey(BadgesKey);
+            PlayerPrefs.Save();
+            OnChanged?.Invoke();
+        }
+
+        static void ForgetRecords(IEnumerable<string> scenarioIds)
+        {
+            var ids = new HashSet<string>(BestScores.Keys);
+            ids.UnionWith(BestStarsById.Keys);
+            if (scenarioIds != null) ids.UnionWith(scenarioIds);
+            foreach (var id in ids)
+            {
+                if (string.IsNullOrEmpty(id)) continue;
+                PlayerPrefs.DeleteKey(ScoreKey(id));
+                PlayerPrefs.DeleteKey(StarsKey(id));
+            }
+            BestScores.Clear();
+            BestStarsById.Clear();
+        }
+
         // ------------------------------------------------------------------ mission records
 
         /// <summary>Best final score ever reached on a mission (0 when it was never completed).</summary>

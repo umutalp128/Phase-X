@@ -46,6 +46,10 @@ public static class PhaseXBootstrap
             Root.AddComponent<PhaseX.UI.PauseMenuController>().Init(modes);
         }
 
+        // Save file: written when the application quits, loaded now so the game resumes where the player left it.
+        PhaseXSaveSystem.RegisterQuitHook();
+        PhaseXSaveSystem.LoadAndRestore();
+
         Debug.Log("[PHASE X] Mission Control workstation online - scenario: " + calc.CurrentScenario.Title);
     }
 }

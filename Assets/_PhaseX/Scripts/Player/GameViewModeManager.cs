@@ -350,6 +350,8 @@ namespace PhaseX.Player
                 _hud.Toast($"MISSION SUCCESS!  {StationProgress.StarText(stars)}  Final score {_flightScore:0} / 100   +{xp} Engineer XP{promoted}", new Color(0.3f, 0.9f, 0.5f), 8f);
             }
             else if (_flightSeen) _hud.Toast("Flight ended early. Review the design and try again.", new Color(1f, 0.68f, 0.18f));
+
+            PhaseXSaveSystem.Save();      // auto-save: the result of a flight is never lost
         }
 
         // ================================================================== per-frame

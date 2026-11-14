@@ -441,6 +441,44 @@ Architecture notes are in `ARCHITECTURE.md` section 10.
   not been seen on screen. Sounds were triggered but not listened to. A pre-built station saved in a scene was not
   tested as a saved scene (only the idempotent path was). No standalone or web build was made.
 
+## Apollo 11 Crewed Landing + File Save System ✅
+
+**Apollo 11** (`nasa_apollo11`, in `missions.json` before the sandbox; 10 missions now) with four Apollo parts in
+`spacecraft_parts.json`: Saturn V, the CSM + Lunar Module stack, the SPS + LM engines and the EVA crew + ALSEP package.
+- 3D: the docked stack (Service Module with gold radiators, cone Command Module, gold Lunar Module with four legs), the SPS
+  bell with RCS quads, the ALSEP package with a flag; a Saturn V miniature on the hologram stand; the Saturn V on the pad
+  and in the flight sim with black roll bands and the escape tower.
+- Flight: Apollo hardware flies a crewed landing from low lunar orbit, with a miniature Lunar Module descending to the
+  near side.
+- The one winning design: Saturn V, LLO, Apollo stack, Apollo engines, ALSEP, X-band dish. $386M of $420M, 170 of 160
+  science, 2,900 of 2,600 m/s, reliability 93.9%, score 65.7 (one star).
+
+**Save system** (`Core/PhaseXSaveSystem.cs`): the game state is written to `persistentDataPath/phasex_save.json`,
+loaded at start-up, saved on quit and after every flight. **Pause menu:** SAVE GAME, RESET PROGRESS with a second
+confirmation, and QUIT GAME saves first. Details in `ARCHITECTURE.md` section 1d.
+
+### Changes beyond the brief
+- **Calculator:** science is now summed over all parts, and any part that generates power counts as the power source.
+  Without these the Apollo bus's 20 science and +180 W fuel cells would not count and the mission could not be won.
+  No other mission's score changed.
+- **Recommended instruments:** the camera was removed from Apollo 11's list. Adding it drops reliability to 91.98%,
+  just under the 92% floor.
+- **Fallback list:** `PhaseXDatabase.BuiltInScenarios()` still holds only the original four missions. Parts have no code
+  fallback at all, so an Apollo fallback mission could not be built anyway.
+- **Antenna placement:** top-mounted parts move to the side of the Service Module on the Apollo stack.
+
+### Verified (2026-11-15)
+- Zero compiler errors. Two batch play-mode runs with a redirected save path, zero runtime errors.
+- Run 1: fresh start with no file; 29 parts and 10 missions load; reference scores unchanged; Apollo 11 evaluated and
+  flown end to end (Lunar Module landed, 300 m/s left); auto-save after the flight; SAVE GAME writes the file; RESET
+  step 1 deletes nothing, NO keeps everything, YES wipes file, XP, badges, records and design and returns to mission 1.
+- Run 2 (new process, same file): mission, design, XP, badge, record, player position and heading, third-person view,
+  segment tab, sensitivity and volume all restored, and the game resumed at the CAD monitor. A corrupt file and a file
+  naming a removed mission and part were both handled without errors.
+- Screenshots of the Apollo stack, Saturn V miniature, pad rocket, sim rocket and the landing were checked by eye.
+- **Not verified:** the pause menu's new layout and the confirmation dialog on screen (OnGUI is not captured), real
+  button clicks and ESC presses (the test called the same methods), the quit-save in a standalone build, and WebGL.
+
 ### Next phases (planned)
 - (On hold) Phase 4: 4-player co-op role ownership and segment sign-off; campaign unlocks; save progress.
 - (On hold) Phase 5: polish, audio, accessibility, standalone builds, demo script.

@@ -32,7 +32,7 @@ namespace PhaseX.Station
         Vector3 _padPos;
         float _leverAngle, _leverTarget, _liftT = -1f, _jiggleUntil;
         ParticleSystem _smoke;
-        GameObject _atlasSrbs, _vulcanSrbs, _pegasusWing;
+        GameObject _atlasSrbs, _vulcanSrbs, _pegasusWing, _saturnLivery;
         string _liveryId;
 
         public Vector3 RocketTop => rocket != null ? rocket.position + Vector3.up * rocketHeight * rocket.localScale.y : transform.position;
@@ -88,6 +88,15 @@ namespace PhaseX.Station
             StationKit.Box(wing, "DeltaWing", new Vector3(0, 10f, 0), new Vector3(7.5f, 7.5f, 0.22f), white, false, new Vector3(0, 0, 45f));
             wing.gameObject.SetActive(false);
             _pegasusWing = wing.gameObject;
+
+            // Saturn V: black roll-pattern bands around the stages and the launch escape tower above the nose
+            var sat = StationKit.Node("Livery_lv_saturn_v", rocket, Vector3.zero);
+            foreach (float y in new[] { 1.2f, 7.5f, 15f, 21.5f })
+                StationKit.Prim(PrimitiveType.Cylinder, sat, "RollBand", new Vector3(0, y, 0), new Vector3(3.26f, 0.7f, 3.26f), dark);
+            StationKit.Prim(PrimitiveType.Cylinder, sat, "EscapeTower", new Vector3(0, 32.5f, 0), new Vector3(0.35f, 2.6f, 0.35f), white);
+            StationKit.Prim(PrimitiveType.Cylinder, sat, "EscapeMotor", new Vector3(0, 31f, 0), new Vector3(0.8f, 0.8f, 0.8f), dark);
+            sat.gameObject.SetActive(false);
+            _saturnLivery = sat.gameObject;
         }
 
         /// <summary>
@@ -257,6 +266,7 @@ namespace PhaseX.Station
                     Show(_atlasSrbs, lv.Id == "lv_atlas_v");            // two slender solids
                     Show(_vulcanSrbs, lv.Id == "lv_vulcan_centaur");    // four GEM 63XL solids
                     Show(_pegasusWing, lv.Id == "lv_pegasus_xl");
+                    Show(_saturnLivery, lv.Id == "lv_saturn_v");
                     ApplyLivery(lv.Id);
                 }
             }
@@ -273,6 +283,7 @@ namespace PhaseX.Station
                 case "lv_atlas_v": return 0.95f;
                 case "lv_vulcan_centaur": return 1.05f;
                 case "lv_heavy": return 1.08f;
+                case "lv_saturn_v": return 1.15f;
                 default: return 1f;
             }
         }

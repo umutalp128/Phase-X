@@ -102,6 +102,30 @@ public class MissionCalculator : MonoBehaviour
         return true;
     }
 
+    /// <summary>
+    /// Load a mission together with a saved design in one step, silently (no part sounds). Unknown, locked or
+    /// duplicate-slot parts are skipped. Used by the save system.
+    /// </summary>
+    public void RestoreDesign(MissionScenario scenario, IEnumerable<string> partIds)
+    {
+        if (scenario == null) return;
+        CurrentScenario = scenario;
+        _selected.Clear();
+        Phase = CmlPhase.Cml1Concept;
+        LastLaunchReport = null;
+        if (partIds != null)
+            foreach (var id in partIds)
+            {
+                var p = PhaseXDatabase.GetPart(id);
+                if (p == null || !IsUnlocked(p) || _selected.Contains(p)) continue;
+                if (IsSingleSlot(p.Category) && _selected.Any(x => x.Category == p.Category)) continue;
+                _selected.Add(p);
+            }
+        Recalculate();
+        OnScenarioChanged?.Invoke();
+        OnDesignChanged?.Invoke();
+    }
+
     public void ClearDesign()
     {
         if (_selected.Count > 0) PhaseX.Station.StationAudio.PartRemove();
@@ -184,7 +208,8 @@ public class MissionCalculator : MonoBehaviour
             if (propLife < life) { life = propLife; lifeLimiter = "propellant for station keeping"; }
         }
 
-        r.RawScience = parts.Where(p => p.Category == PartCategory.Payload || p.Category == PartCategory.Orbit).Sum(p => p.ScienceScore);
+        // any part can carry science (payloads and orbits do; so does a crewed spacecraft)
+        r.RawScience = parts.Sum(p => p.ScienceScore);
         float dataFactor = sc.CheckDataBottleneck && dataGen > 0f ? Mathf.Clamp01(downlink / dataGen) : 1f;
         r.Science = r.RawScience * dataFactor;
         r.TargetScience = sc.TargetScience;
@@ -210,7 +235,9 @@ public class MissionCalculator : MonoBehaviour
         if (lv == null) missing.Add("launch vehicle");
         if (orbit == null) missing.Add("orbit");
         if (bus == null) missing.Add("spacecraft bus");
-        if (!parts.Any(p => p.Category == PartCategory.Power)) missing.Add("power source");
+        // anything that generates power counts as the power source (solar, RTG, or a bus with its own fuel cells)
+        bool hasPower = parts.Any(p => p.PowerWatts > 0f);
+        if (!hasPower) missing.Add("power source");
         if (!parts.Any(p => p.Category == PartCategory.Payload)) missing.Add("science payload");
         if (!parts.Any(p => p.Category == PartCategory.Comms)) missing.Add("radio");
         if (sc.CheckDeltaV && dvReq > 0 && !parts.Any(p => p.Category == PartCategory.Propulsion)) missing.Add("propulsion");
@@ -220,7 +247,7 @@ public class MissionCalculator : MonoBehaviour
         if (lv != null && !r.Mass.Ok) w.Add($"TOO HEAVY: {craftMass:0} kg exceeds the {lvCap:0} kg the rocket can lift.");
         if (bus != null && r.ComponentMassKg > r.BusCapacityKg)
             w.Add($"BUS OVERLOADED: {r.ComponentMassKg:0.#} kg of parts on a bus rated for {r.BusCapacityKg:0} kg.");
-        if (parts.Any(p => p.Category == PartCategory.Power) && net < 0)
+        if (hasPower && net < 0)
             w.Add($"POWER DEFICIT of {-net:0} W" + (sc.SolarEfficiency < 1f ? $" - solar only works at {sc.SolarEfficiency * 100:0}% here." : "."));
         if (orbit != null && sc.AllowedOrbitIds.Length > 0 && !sc.AllowedOrbitIds.Contains(orbit.Id))
             w.Add("WRONG DESTINATION: this mission needs " +

@@ -52,7 +52,10 @@ public class LunarFlightPlan
     const int N = 512;
 
     public readonly FlightMode Mode;
+    /// <summary>A surface landing follows the orbit insertion: a far-side rover (halo orbit) or a crewed lunar module.</summary>
     public readonly bool HasRover;
+    /// <summary>The lander is a crewed lunar module (Apollo): it lands on the near side and its crew returns to orbit.</summary>
+    public readonly bool Crewed;
     public readonly List<FlightSegment> Segments = new List<FlightSegment>();
     public float ScriptEnd => Segments[Segments.Count - 1].End;
     public float TLoi { get; private set; } = -1f;
@@ -74,10 +77,11 @@ public class LunarFlightPlan
     readonly float _lCum0;
     readonly float _lrpKm, _laKm, _leKm, _lpKm;
 
-    public LunarFlightPlan(FlightMode mode, bool rover, float loiDv, float descentDv)
+    public LunarFlightPlan(FlightMode mode, bool rover, float loiDv, float descentDv, bool crewed = false)
     {
         Mode = mode;
-        HasRover = rover && mode == FlightMode.HaloOrbit;
+        Crewed = crewed && mode != FlightMode.LeoOnly;
+        HasRover = Crewed || (rover && mode == FlightMode.HaloOrbit);
 
         if (mode == FlightMode.LeoOnly)
         {
@@ -151,10 +155,16 @@ public class LunarFlightPlan
         if (HasRover)
         {
             TRover = ScriptEnd;
-            Add("FAR-SIDE ROVER LANDING", TRoverDescent, 1.0,
-                $"Rover separation. Powered descent of {descentDv:0} m/s to the far side.",
-                "The lander must cancel almost all of its orbital speed to touch down softly. On the far side Earth is never " +
-                "in view, so every bit of data goes rover -> orbiter -> Earth.", "POWERED DESCENT", descentDv);
+            if (Crewed)
+                Add("CREWED LUNAR LANDING", TRoverDescent, 2.5,
+                    $"Lunar Module undocked. Powered descent to the Sea of Tranquility; {descentDv:0} m/s covers landing and liftoff.",
+                    "The Lunar Module brakes out of orbit on its descent engine and lands on four legs. Its ascent stage later lifts " +
+                    "the crew back to the Command Module, which waited in lunar orbit the whole time.", "POWERED DESCENT", descentDv);
+            else
+                Add("FAR-SIDE ROVER LANDING", TRoverDescent, 1.0,
+                    $"Rover separation. Powered descent of {descentDv:0} m/s to the far side.",
+                    "The lander must cancel almost all of its orbital speed to touch down softly. On the far side Earth is never " +
+                    "in view, so every bit of data goes rover -> orbiter -> Earth.", "POWERED DESCENT", descentDv);
         }
     }
 
@@ -216,6 +226,9 @@ public class LunarFlightPlan
 
     /// <summary>Unit vector from Earth toward the Moon (the far side faces this way).</summary>
     public Vector3 FarSideDir(float t) => MoonPos(t).normalized;
+
+    /// <summary>Direction from the Moon's centre to the landing site: far side for the rover, near side for a crew.</summary>
+    public Vector3 LandingSiteDir(float t) => Crewed ? -FarSideDir(t) : FarSideDir(t);
 
     float TransferTheta(float u) => Invert(_tCum, 0f, Mathf.PI, u);
     Vector3 TransferPos(float theta) => _tp / (1f + _te * Mathf.Cos(theta)) * Dir(theta);
@@ -350,7 +363,7 @@ public class LunarFlightPlan
             st.RoverVisible = true;
             float u = Mathf.Clamp01((t - TRover) / TRoverDescent);
             Vector3 startRel = LunarRel(LunarNu(TRover - TLoi));
-            Vector3 siteRel = MoonR * FarSideDir(t);
+            Vector3 siteRel = MoonR * LandingSiteDir(t);
             Vector3 rel = Bezier(startRel, startRel * 0.8f + siteRel * 0.6f, siteRel * 1.5f, siteRel, Mathf.SmoothStep(0, 1, u));
             st.RoverPosition = moon + rel;
             st.RoverLanded = u >= 1f;

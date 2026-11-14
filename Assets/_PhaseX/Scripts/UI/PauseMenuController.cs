@@ -7,7 +7,8 @@ namespace PhaseX.UI
 {
     /// <summary>
     /// ESC pause menu for the 3D station: "PHASEX // SYSTEM PAUSED", a mouse-sensitivity slider and a master-volume
-    /// slider with live readouts, a RESUME MISSION button and a QUIT GAME button. Pausing sets Time.timeScale to 0,
+    /// slider with live readouts, the save-file status, and four buttons: RESUME MISSION, SAVE GAME, RESET PROGRESS
+    /// (asks a second time before wiping anything) and QUIT GAME (saves first). Pausing sets Time.timeScale to 0,
     /// freezes look and movement, pauses world audio and frees the cursor; resuming restores the cursor that the
     /// current view mode needs.
     /// The sensitivity is saved in PlayerPrefs ("PhaseX_MouseSensitivity") and applied to PhaseXPlayerController live;
@@ -29,14 +30,21 @@ namespace PhaseX.UI
         public static float MouseSensitivity { get; private set; } = DefaultSensitivity;
 
         const float W = 1920f, H = 1080f;
-        const float WinW = 860f, WinH = 540f;
+        const float WinW = 860f, WinH = 610f;
 
         static int _escUsedFrame = -1;
 
         GameViewModeManager _mgr;
         bool _eligibleLastFrame;
         float _volumeTickAt;
-        GUIStyle _title, _label, _bold, _btn, _quit, _box, _track, _thumb;
+        bool _confirmingReset;
+        string _status;
+        Color _statusColor;
+        float _statusUntil;
+        GUIStyle _title, _label, _bold, _btn, _quit, _save, _warn, _safe, _box, _confirmBox, _track, _thumb;
+
+        /// <summary>True while the "CONFIRM FULL RESET" dialog is showing.</summary>
+        public bool ConfirmingReset => _confirmingReset;
         readonly List<Texture2D> _textures = new List<Texture2D>();
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
@@ -114,6 +122,8 @@ namespace PhaseX.UI
         {
             if (paused == IsPaused) return;
             if (paused && !CanPauseHere) return;
+            _confirmingReset = false;       // the reset question never survives closing or reopening the menu
+            _status = null;
             IsPaused = paused;
             Time.timeScale = paused ? 0f : 1f;
             AudioListener.pause = paused;
@@ -131,9 +141,58 @@ namespace PhaseX.UI
             StationAudio.Blip();
         }
 
-        /// <summary>Save the settings, undo the pause and leave the game (stops Play mode in the editor).</summary>
+        /// <summary>SAVE GAME: write phasex_save.json now and say so in the menu.</summary>
+        public void SaveGame()
+        {
+            if (PhaseXSaveSystem.Save())
+            {
+                StationAudio.Chime();
+                SetStatus("Game saved to " + PhaseXSaveSystem.FileName, StationKit.Green);
+                if (StationHUD.Instance != null) StationHUD.Instance.Toast("Progress saved!", StationKit.Green);
+            }
+            else
+            {
+                StationAudio.Buzzer();
+                SetStatus("Could not save: " + (PhaseXSaveSystem.LastError ?? "unknown error"), StationKit.Red);
+            }
+        }
+
+        void SetStatus(string text, Color color)
+        {
+            _status = text; _statusColor = color; _statusUntil = Time.unscaledTime + 6f;
+        }
+
+        /// <summary>RESET PROGRESS, step one: only ask. Nothing is deleted until <see cref="ConfirmReset"/>.</summary>
+        public void RequestReset()
+        {
+            if (_mgr != null && _mgr.IsLaunchModeLocked) return;    // not in the middle of a launch
+            _confirmingReset = true;
+            StationAudio.Blip();
+        }
+
+        /// <summary>The player answered NO (or pressed ESC): keep everything.</summary>
+        public void CancelReset()
+        {
+            if (!_confirmingReset) return;
+            _confirmingReset = false;
+            StationAudio.Blip();
+        }
+
+        /// <summary>RESET PROGRESS, step two: the player confirmed. Wipe everything and return to the first mission.</summary>
+        public void ConfirmReset()
+        {
+            if (!_confirmingReset) return;
+            _confirmingReset = false;
+            PhaseXSaveSystem.ResetAllProgress();
+            SetPaused(false);
+            StationAudio.Buzzer();
+            if (StationHUD.Instance != null) StationHUD.Instance.Toast("All progress has been reset. Welcome back to Mission 1!", StationKit.Amber, 8f);
+        }
+
+        /// <summary>Save the game, undo the pause and leave (stops Play mode in the editor).</summary>
         public void QuitGame()
         {
+            PhaseXSaveSystem.Save();        // always save before leaving
             PlayerPrefs.Save();
             IsPaused = false;
             Time.timeScale = 1f;
@@ -154,7 +213,8 @@ namespace PhaseX.UI
         {
             if (PhaseXInput.Down(PhaseXInput.K.Escape))
             {
-                if (IsPaused) SetPaused(false);
+                if (IsPaused && _confirmingReset) CancelReset();     // ESC answers "no" to the reset question first
+                else if (IsPaused) SetPaused(false);
                 // not on the frame ESC just closed a panel or another screen and dropped us back into the room
                 else if (CanPauseHere && _eligibleLastFrame && _escUsedFrame != Time.frameCount) SetPaused(true);
             }
@@ -190,19 +250,56 @@ namespace PhaseX.UI
                 vol, 0f, 1f, "0%  mute", "100%", StationKit.Green);
             if (!Mathf.Approximately(nv, vol)) SetVolume(nv);
 
-            GUI.Label(new Rect(r.x + 48, r.y + 344, r.width - 96, 22),
-                Col($"Mouse look default {DefaultSensitivity:0.0}x, volume default {Mathf.RoundToInt(StationAudio.DefaultVolume * 100f)}%. Both are saved automatically.", new Color(0.55f, 0.62f, 0.72f)),
-                Style(_label, 14, TextAnchor.MiddleLeft));
+            // ---- save file status
+            var dim = new Color(0.55f, 0.62f, 0.72f);
+            bool showStatus = _status != null && Time.unscaledTime < _statusUntil;
+            string statusLine = showStatus
+                ? Col(_status, _statusColor)
+                : Col("Save file: " + PhaseXSaveSystem.FileName + "   |   Last saved: ", dim) + Col(PhaseXSaveSystem.HasSaveFile ? PhaseXSaveSystem.LastSaveTimeDisplay : "Not saved yet", StationKit.TextC);
+            GUI.Label(new Rect(r.x + 48, r.y + 346, r.width - 96, 24), statusLine, Style(_bold, 15, TextAnchor.MiddleLeft));
+            GUI.Label(new Rect(r.x + 48, r.y + 372, r.width - 96, 20),
+                Col("The game saves automatically when you quit and after every flight, and loads this file when it starts.", dim),
+                Style(_label, 13, TextAnchor.MiddleLeft));
 
-            // ---- actions
-            float by = r.yMax - 44 - 68;
-            const float quitW = 250f, gap = 16f;
-            if (GUI.Button(new Rect(r.x + 48, by, r.width - 96 - quitW - gap, 68), "RESUME MISSION  [ESC]", _btn)) SetPaused(false);
-            if (GUI.Button(new Rect(r.xMax - 48 - quitW, by, quitW, 68), "QUIT GAME", _quit)) QuitGame();
+            // ---- actions: two rows. While the reset question is open they are drawn but cannot be clicked.
+            const float gap = 16f, bh = 62f;
+            float bw = (r.width - 96 - gap) / 2f;
+            float row1 = r.y + 410, row2 = row1 + bh + 14;
+            bool launchLocked = _mgr != null && _mgr.IsLaunchModeLocked;
+            bool wasEnabled = GUI.enabled;
+            GUI.enabled = wasEnabled && !_confirmingReset;
+            if (GUI.Button(new Rect(r.x + 48, row1, bw, bh), "RESUME MISSION  [ESC]", _btn)) SetPaused(false);
+            if (GUI.Button(new Rect(r.x + 48 + bw + gap, row1, bw, bh), "SAVE GAME", _save)) SaveGame();
+            GUI.enabled = wasEnabled && !_confirmingReset && !launchLocked;
+            if (GUI.Button(new Rect(r.x + 48, row2, bw, bh), launchLocked ? "RESET PROGRESS  (not during launch)" : "RESET PROGRESS", _warn)) RequestReset();
+            GUI.enabled = wasEnabled && !_confirmingReset;
+            if (GUI.Button(new Rect(r.x + 48 + bw + gap, row2, bw, bh), "QUIT GAME", _quit)) QuitGame();
+            GUI.enabled = wasEnabled;
+
+            if (_confirmingReset) DrawResetConfirmation(r);
 
             // Nothing under the pause menu may see the mouse: not the HUD, not the workstation, not a station panel.
             var e = Event.current;
             if (e.isMouse || e.type == EventType.ScrollWheel) e.Use();
+        }
+
+        /// <summary>Step two of RESET PROGRESS: a high-contrast question on top of the menu. Nothing is wiped before YES.</summary>
+        void DrawResetConfirmation(Rect window)
+        {
+            Fill(window, new Color(0.02f, 0f, 0f, 0.86f));
+            var c = new Rect(window.x + 60, window.y + 110, window.width - 120, 400);
+            GUI.Box(c, GUIContent.none, _confirmBox);
+            Fill(new Rect(c.x, c.y, c.width, 6), StationKit.Red);
+            GUI.Label(new Rect(c.x + 36, c.y + 26, c.width - 72, 44), Col("CONFIRM FULL RESET", StationKit.Red), Style(_title, 32, TextAnchor.MiddleLeft));
+            GUI.Label(new Rect(c.x + 36, c.y + 84, c.width - 72, 56),
+                "Are you sure you want to reset all progress and start over from the beginning?", Style(_label, 19, TextAnchor.UpperLeft));
+            GUI.Label(new Rect(c.x + 36, c.y + 150, c.width - 72, 110),
+                Col("This will permanently delete your save file (" + PhaseXSaveSystem.FileName + "), reset all mission stars, Engineer XP, badges, " +
+                    "and clear your current spacecraft design.", new Color(1f, 0.75f, 0.7f)), Style(_label, 17, TextAnchor.UpperLeft));
+            const float gap = 16f, bh = 64f;
+            float bw = (c.width - 72 - gap) / 2f, by = c.yMax - 36 - bh;
+            if (GUI.Button(new Rect(c.x + 36, by, bw, bh), "YES, RESET EVERYTHING", _quit)) ConfirmReset();
+            if (GUI.Button(new Rect(c.x + 36 + bw + gap, by, bw, bh), "NO, KEEP MY SAVE  [ESC]", _safe)) CancelReset();
         }
 
         /// <summary>A labelled slider row: title left, live value right, hand-drawn track, end captions under it.</summary>
@@ -287,6 +384,16 @@ namespace PhaseX.UI
                 new Color(1f, 0.66f, 0.2f), new Color(0.08f, 0.05f, 0.02f));
             _quit = ButtonStyle("pm_quit", new Color(0.12f, 0.035f, 0.04f), StationKit.Red, new Color(1f, 0.5f, 0.45f),
                 new Color(0.75f, 0.14f, 0.12f), Color.white);
+            // save: green. reset: amber outline that fills on hover. "no": the safe cyan choice.
+            _save = ButtonStyle("pm_save", new Color(0.06f, 0.3f, 0.16f), StationKit.Green, new Color(0.75f, 1f, 0.85f),
+                new Color(0.12f, 0.6f, 0.32f), Color.white);
+            _warn = ButtonStyle("pm_warn", new Color(0.14f, 0.08f, 0.02f), StationKit.Amber, new Color(1f, 0.78f, 0.4f),
+                new Color(0.7f, 0.36f, 0.06f), Color.white);
+            _safe = ButtonStyle("pm_safe", new Color(0.05f, 0.24f, 0.32f), StationKit.Cyan, Color.white,
+                new Color(0.1f, 0.45f, 0.6f), Color.white);
+            foreach (var st in new[] { _save, _warn, _safe, _quit, _btn }) { st.fontSize = 20; st.richText = true; st.wordWrap = true; }
+            _confirmBox = new GUIStyle { name = "pm_confirm", border = new RectOffset(2, 2, 2, 2) };
+            _confirmBox.normal.background = Tex(new Color(0.1f, 0.03f, 0.035f, 1f), StationKit.Red);
             // invisible track (drawn by hand above) and a solid thumb
             _track = new GUIStyle { name = "pm_track", fixedHeight = 28 };
             _thumb = new GUIStyle { name = "pm_thumb", fixedWidth = 18, fixedHeight = 28 };
