@@ -23,12 +23,24 @@ namespace PhaseX.Station
         {
             _calc = MissionCalculator.Instance;
             if (_calc != null) _calc.OnScenarioChanged += RefreshBoard;
+            StationProgress.OnChanged += RefreshBoard;      // a new mission record shows up on the wall at once
             RefreshBoard();
         }
 
         void OnDestroy()
         {
             if (_calc != null) _calc.OnScenarioChanged -= RefreshBoard;
+            StationProgress.OnChanged -= RefreshBoard;
+        }
+
+        /// <summary>"3 stars  88 / 100" for a flown mission, or a hint that it is still to be flown.</summary>
+        static string BestLine(MissionScenario sc)
+        {
+            int stars = StationProgress.BestStars(sc.Id);
+            float score = StationProgress.BestScore(sc.Id);
+            return stars > 0 || score > 0f
+                ? StationKit.Col(StationProgress.StarText(stars), new Color(1f, 0.8f, 0.25f)) + $"  {score:0} / 100"
+                : StationKit.Col("not flown yet", new Color(0.55f, 0.62f, 0.72f));
         }
 
         void RefreshBoard()
@@ -38,7 +50,8 @@ namespace PhaseX.Station
             if (titleText != null) titleText.text = sc.Title.ToUpperInvariant();
             if (bodyText != null)
                 bodyText.text = StationKit.Col("OBJECTIVE", StationKit.Amber) + "\n" + StationKit.Wrap(sc.Objective, 46) + "\n\n" +
-                                StationKit.Col($"BUDGET {MissionCalculator.Money(sc.MaxBudget)}    SCIENCE {sc.TargetScience:0} pts    LIFE {sc.RequiredLifetimeMonths:0} mo", StationKit.Cyan);
+                                StationKit.Col($"BUDGET {MissionCalculator.Money(sc.MaxBudget)}    SCIENCE {sc.TargetScience:0} pts    LIFE {sc.RequiredLifetimeMonths:0} mo", StationKit.Cyan) + "\n" +
+                                StationKit.Col("YOUR BEST  ", StationKit.Amber) + BestLine(sc);
         }
 
         public string GetInteractionPrompt() => "[E] Open NASA Mission Briefing Board";
@@ -83,10 +96,11 @@ namespace PhaseX.Station
                 (PhaseXRuntimeUI.RecommendedInstruments(sc).Length > 0
                     ? StationKit.Col("RECOMMENDED INSTRUMENTS   ", StationKit.Amber) + PhaseXRuntimeUI.RecommendedInstruments(sc) + "\n\n" : "") +
                 StationKit.Col("REAL MISSIONS   ", StationKit.Cyan) + StationKnowledge.MissionBackground(sc.Id) + "\n\n" +
+                StationKit.Col("YOUR BEST   ", StationKit.Amber) + BestLine(sc) + "\n\n" +
                 (active ? StationKit.Col("This is your ACTIVE mission.", StationKit.Green)
                         : StationKit.Col("Accepting a different mission clears the current spacecraft design.", dim));
 
-            hud.ShowPanel($"NASA MISSION BRIEFING   {_index + 1} / {list.Count}", sc.Title.ToUpperInvariant(), body, StationKit.Cyan,
+            hud.ShowPanel($"NASA MISSION BRIEFING   {_index + 1} / {list.Count}   {StationProgress.EarnedStars(StationProgress.BestStars(sc.Id))}", sc.Title.ToUpperInvariant(), body, StationKit.Cyan,
                 new List<StationHUD.PanelButton>
                 {
                     new StationHUD.PanelButton { Label = "<  PREVIOUS  [A]", Key = PhaseXInput.K.A, OnClick = () => Cycle(-1) },

@@ -9,12 +9,13 @@ public static class PhaseXMaterials
 {
     static Material _lit, _litEmissive, _unlit;
     static bool _unlitSearched;
+    static Texture2D _dot;
     static readonly Dictionary<string, Material> Cache = new Dictionary<string, Material>();
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     static void ResetStatics()
     {
-        _lit = null; _litEmissive = null; _unlit = null; _unlitSearched = false;
+        _lit = null; _litEmissive = null; _unlit = null; _unlitSearched = false; _dot = null;
         Cache.Clear();
     }
 
@@ -156,8 +157,10 @@ public static class PhaseXMaterials
 
     // ================================================================== procedural textures
 
+    /// <summary>Soft round particle sprite. The default size is created once and shared.</summary>
     public static Texture2D SoftDot(int size = 32)
     {
+        if (size == 32 && _dot != null) return _dot;
         var t = new Texture2D(size, size, TextureFormat.RGBA32, false) { name = "PhaseX_Dot", wrapMode = TextureWrapMode.Clamp };
         var px = new Color[size * size];
         float r = size * 0.5f;
@@ -170,6 +173,7 @@ public static class PhaseXMaterials
         }
         t.SetPixels(px);
         t.Apply();
+        if (size == 32) _dot = t;
         return t;
     }
 

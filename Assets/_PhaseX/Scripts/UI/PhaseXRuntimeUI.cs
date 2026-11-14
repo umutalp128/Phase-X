@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using PhaseX.Station;
 using UnityEngine;
 
 /// <summary>
@@ -54,6 +55,20 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
     float _reportAt = -1f;
     float _simStartAt = -1f;
 
+    // ---- Phase 5: mission record of the flight in progress, animated gauges, cached card content
+    bool _resultRecorded, _newBest;
+    readonly float[] _gaugeShown = new float[6];
+    int _gaugeFrame = -1;
+    class StatChip { public string Text; public Color C; public float W; }
+    readonly Dictionary<string, List<StatChip>> _chips = new Dictionary<string, List<StatChip>>();
+    readonly Dictionary<string, string> _line2 = new Dictionary<string, string>();
+    readonly Dictionary<string, float> _cardHeights = new Dictionary<string, float>();
+    readonly List<SpacecraftPart> _cardParts = new List<SpacecraftPart>();
+    MissionSegmentRole? _cardPartsRole;
+    int _cardPartsCount = -1;
+    readonly GUIContent _tmp = new GUIContent();
+    static string _fitLabel;
+
     /// <summary>The 1.3 s between pressing LAUNCH and the flight/report: the design is frozen.</summary>
     bool LaunchPending => !SimActive && (_reportAt > 0f || _simStartAt > 0f);
 
@@ -80,16 +95,19 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
     static readonly Color Green = new Color(0.3f, 0.9f, 0.5f);
     static readonly Color Red = new Color(1f, 0.36f, 0.3f);
     static readonly Color Track = new Color(0.11f, 0.15f, 0.22f);
+    static readonly Color StarGold = new Color(1f, 0.8f, 0.25f);
 
     GUISkin _skin;
     GUIStyle _panel, _ink, _title, _subtitle, _h2, _label, _labelBold, _small, _right, _center, _btn, _btnOn,
-        _card, _cardSel, _cardLocked, _cardHover, _launchReady, _launchNot, _okBox, _badBox, _window, _chip, _chipOn, _chipDone;
+        _card, _cardSel, _cardLocked, _cardHover, _launchReady, _launchNot, _okBox, _badBox, _window, _chip, _chipOn, _chipDone,
+        _starSmall, _chipText;
     readonly List<Texture2D> _textures = new List<Texture2D>();
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     static void ResetStatics()
     {
         _modal = Modal.Briefing; _instance = null; Hidden = false; StepAwayRequested = null; LaunchOverride = null; ExitLocked = null;
+        _fitLabel = null;
     }
 
     public void Init(MissionCalculator calc)
@@ -99,11 +117,13 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
         _calc.OnScenarioChanged += () =>
         {
             _modal = Modal.Briefing; _reportAt = -1f; _simStartAt = -1f; _listScroll = Vector2.zero;
+            _resultRecorded = false; _newBest = false;
             if (Sim != null) Sim.End();
         };
         // Ready designs fly the CML 4 trajectory simulation first; scrubbed launches go straight to the report.
         _calc.OnLaunched += r =>
         {
+            _resultRecorded = false; _newBest = false;
             if (r.MissionReady && Sim != null) _simStartAt = Time.unscaledTime + 1.3f;
             else _reportAt = Time.unscaledTime + 1.3f;
         };
@@ -114,6 +134,9 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
     void OnDestroy()
     {
         foreach (var t in _textures) if (t != null) Destroy(t);
+        _textures.Clear();
+        if (_skin != null) Destroy(_skin);
+        if (_instance == this) _instance = null;
     }
 
     /// <summary>True when a screen-space point (pixels, origin bottom-left) is over the open 3D viewport.</summary>
@@ -141,7 +164,13 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
             Sim.Begin(_calc.CurrentScenario, _calc.LastLaunchReport ?? _calc.Report, _calc.SelectedParts);
         }
 
+        TrackFlightResult();
+
         if (Hidden || LaunchPending) return;
+
+        // While the workstation is on screen it owns ESC (close a window, open the report, step away):
+        // that key press must never also open the pause menu.
+        if (PhaseXInput.Down(PhaseXInput.K.Escape)) PhaseX.UI.PauseMenuController.NoteEscapeUsed();
 
         if (_modal == Modal.Briefing)
         {
@@ -160,7 +189,7 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
 
         var sc = PhaseXDatabase.Scenarios;
         int fn = PhaseXInput.FunctionKeyDown();          // F1-F9 pick a mission
-        if (fn >= 0 && fn < sc.Count) _calc.LoadScenario(sc[fn]);
+        if (fn >= 0 && fn < sc.Count) SwitchScenario(sc[fn]);
         if (PhaseXInput.Down(PhaseXInput.K.D1)) SetTab(MissionSegmentRole.UserSegment);
         if (PhaseXInput.Down(PhaseXInput.K.D2)) SetTab(MissionSegmentRole.LaunchSegment);
         if (PhaseXInput.Down(PhaseXInput.K.D3)) SetTab(MissionSegmentRole.SpaceSegment);
@@ -177,8 +206,31 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
         _calc.Launch();
     }
 
+    /// <summary>Load another mission from the workstation (button or function key), with a UI tick.</summary>
+    void SwitchScenario(MissionScenario s)
+    {
+        if (s == null) return;
+        StationAudio.Blip();
+        _calc.LoadScenario(s);
+    }
+
+    /// <summary>
+    /// A launched mission is finished once the flight is complete and every crisis is answered: store the final score
+    /// and stars as the mission record (kept only if better). Runs even while the workstation is hidden.
+    /// </summary>
+    void TrackFlightResult()
+    {
+        var r = _calc.LastLaunchReport;
+        if (_resultRecorded || r == null || !r.MissionReady || !SimActive || FlightUnfinished) return;
+        var cm = CrisisEventManager.Instance;
+        float final = cm != null && cm.Live != null ? cm.FinalScore(r.Score) : r.Score;
+        _resultRecorded = true;
+        _newBest = StationProgress.RecordResult(_calc.CurrentScenario.Id, final, MissionCalculator.StarsFor(final));
+    }
+
     void SetTab(MissionSegmentRole? r)
     {
+        if (!Equals(_calc.RoleFilter, r)) StationAudio.Blip();
         _calc.RoleFilter = r;
         _listScroll = Vector2.zero;
     }
@@ -201,7 +253,7 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
         var r = _calc.LastLaunchReport;
         var next = _calc.NextScenario();
         if (FlightUnfinished) _modal = Modal.None;   // keep flying: the next mission unlocks when the flight is done
-        else if (r != null && r.MissionReady && next != null) _calc.LoadScenario(next);
+        else if (r != null && r.MissionReady && next != null) SwitchScenario(next);
         else CloseReport();
     }
 
@@ -303,9 +355,14 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
             bool wasEnabled = GUI.enabled;
             GUI.enabled = wasEnabled && !LaunchLocked;      // no scenario switch during an active launch
             string caption = grid ? (i < 9 ? $"F{i + 1} " : "") + s.ShortName : $"[F{i + 1}]  {s.ShortName}";
-            if (GUI.Button(r, caption, s == sc ? chipOn : chip)) _calc.LoadScenario(s);
+            if (GUI.Button(r, caption, s == sc ? chipOn : chip)) SwitchScenario(s);
             GUI.enabled = wasEnabled;
-            if (r.Contains(Event.current.mousePosition)) Hover("[F" + (i + 1) + "] " + s.Title, s.Objective);
+            // earned stars in the top-right corner of the mission button
+            int best = StationProgress.BestStars(s.Id);
+            if (best > 0) GUI.Label(new Rect(r.xMax - 46, r.y - 1, 43, 13), StationProgress.EarnedStars(best), _starSmall);
+            if (r.Contains(Event.current.mousePosition))
+                Hover("[F" + (i + 1) + "] " + s.Title,
+                    s.Objective + (best > 0 ? $"   |   BEST {StationProgress.StarText(best)}  {StationProgress.BestScore(s.Id):0} / 100" : "   |   not flown yet"));
         }
     }
 
@@ -361,6 +418,24 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
 
     // ---------------------------------------------------------------- left: tabs + part cards
 
+    static readonly (string label, MissionSegmentRole? role)[] SegmentTabs =
+    {
+        ("[1] USER", MissionSegmentRole.UserSegment), ("[2] LAUNCH", MissionSegmentRole.LaunchSegment),
+        ("[3] SPACE", MissionSegmentRole.SpaceSegment), ("[4] GROUND", MissionSegmentRole.GroundSegment), ("[5] ALL", null)
+    };
+
+    /// <summary>The parts of the current segment tab, sorted by category. Rebuilt only when the tab or catalog changes.</summary>
+    List<SpacecraftPart> CardParts()
+    {
+        var all = PhaseXDatabase.Parts;
+        if (_cardPartsCount == all.Count && Equals(_cardPartsRole, _calc.RoleFilter)) return _cardParts;
+        _cardPartsCount = all.Count;
+        _cardPartsRole = _calc.RoleFilter;
+        _cardParts.Clear();
+        _cardParts.AddRange(all.Where(p => _calc.RoleFilter == null || p.Role == _calc.RoleFilter.Value).OrderBy(p => (int)p.Category));
+        return _cardParts;
+    }
+
     void DrawLeftPanel()
     {
         GUI.Box(LeftRect, GUIContent.none, _panel);
@@ -368,11 +443,7 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
         float w = LeftRect.width;
         GUI.Label(new Rect(16, 10, w - 32, 22), "MISSION SEGMENTS", _h2);
 
-        var tabs = new (string label, MissionSegmentRole? role)[]
-        {
-            ("[1] USER", MissionSegmentRole.UserSegment), ("[2] LAUNCH", MissionSegmentRole.LaunchSegment),
-            ("[3] SPACE", MissionSegmentRole.SpaceSegment), ("[4] GROUND", MissionSegmentRole.GroundSegment), ("[5] ALL", null)
-        };
+        var tabs = SegmentTabs;
         float tw = (w - 32 - 4 * 6) / 5f;
         for (int i = 0; i < tabs.Length; i++)
         {
@@ -383,14 +454,14 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
         Fill(new Rect(14, 116, w - 28, 1), CyanDim);
 
         // ---- scrollable part cards
-        var parts = PhaseXDatabase.Parts.Where(p => _calc.RoleFilter == null || p.Role == _calc.RoleFilter.Value)
-            .OrderBy(p => (int)p.Category).ToList();
+        var parts = CardParts();
         float cardW = w - 32 - 14;
         var tipStyle = Style(_small, 12, TextAnchor.UpperLeft);
         float contentH = 0;
         PartCategory? lastCat = null;
-        foreach (var p in parts)
+        for (int i = 0; i < parts.Count; i++)
         {
+            var p = parts[i];
             if (p.Category != lastCat) { contentH += 30; lastCat = p.Category; }
             contentH += CardHeight(p, cardW, tipStyle) + 8;
         }
@@ -400,8 +471,9 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
         _listScroll = GUI.BeginScrollView(view, _listScroll, new Rect(0, 0, cardW + 4, contentH));
         float y = 0;
         lastCat = null;
-        foreach (var p in parts)
+        for (int i = 0; i < parts.Count; i++)
         {
+            var p = parts[i];
             if (p.Category != lastCat)
             {
                 lastCat = p.Category;
@@ -410,75 +482,134 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
                 y += 30;
             }
             float h = CardHeight(p, cardW, tipStyle);
-            DrawCard(new Rect(2, y, cardW, h), p, tipStyle, mouseInList);
+            // cards scrolled out of view are skipped entirely
+            if (y + h >= _listScroll.y && y <= _listScroll.y + view.height) DrawCard(new Rect(2, y, cardW, h), p, tipStyle, mouseInList);
             y += h + 8;
         }
         GUI.EndScrollView();
         GUI.EndGroup();
     }
 
-    static float CardHeight(SpacecraftPart p, float w, GUIStyle tip) => 72 + tip.CalcHeight(new GUIContent(p.EducationalTooltip), w - 28);
+    float CardHeight(SpacecraftPart p, float w, GUIStyle tip)
+    {
+        if (_cardHeights.TryGetValue(p.Id, out float h)) return h;
+        _tmp.text = p.EducationalTooltip;
+        h = 72 + tip.CalcHeight(_tmp, w - 28);
+        _cardHeights[p.Id] = h;
+        return h;
+    }
+
+    /// <summary>A part the mission itself asks for: one of its recommended instruments or one of its destination orbits.</summary>
+    bool IsMissionFit(SpacecraftPart p)
+    {
+        var sc = _calc.CurrentScenario;
+        return System.Array.IndexOf(sc.RecommendedPayloadIds, p.Id) >= 0 || System.Array.IndexOf(sc.AllowedOrbitIds, p.Id) >= 0;
+    }
 
     void DrawCard(Rect r, SpacecraftPart p, GUIStyle tipStyle, bool mouseInList)
     {
         bool unlocked = _calc.IsUnlocked(p);
         bool sel = _calc.IsSelected(p);
         bool hover = mouseInList && r.Contains(Event.current.mousePosition);
+        bool fit = unlocked && IsMissionFit(p);
 
         GUI.Box(r, GUIContent.none, !unlocked ? _cardLocked : sel ? _cardSel : hover ? _cardHover : _card);
         Fill(new Rect(r.x, r.y, 4, r.height), CategoryColor(p.Category) * (unlocked ? 1f : 0.4f));
 
         var nameStyle = Style(_labelBold, 15, TextAnchor.UpperLeft);
-        bool recommended = System.Array.IndexOf(_calc.CurrentScenario.RecommendedPayloadIds, p.Id) >= 0;
-        string status = !unlocked ? Col("LOCKED - LEVEL " + p.UnlockLevel, Dim) : sel ? Col("INSTALLED", Green) : hover ? Col("CLICK TO ADD", Cyan)
-            : recommended ? Col("MISSION PICK", Amber) : "";
+        string status = !unlocked ? Col("LOCKED - LEVEL " + p.UnlockLevel, Dim) : sel ? Col("INSTALLED", Green) : hover ? Col("CLICK TO ADD", Cyan) : "";
         GUI.Label(new Rect(r.x + 14, r.y + 8, r.width - 140, 22), unlocked ? p.Name : Col(p.Name, Dim), nameStyle);
         GUI.Label(new Rect(r.xMax - 150, r.y + 9, 140, 20), status, Style(_labelBold, 11, TextAnchor.UpperRight));
 
-        GUI.Label(new Rect(r.x + 14, r.y + 31, r.width - 28, 18), StatsLine(p), Style(_small, 12, TextAnchor.UpperLeft));
-        GUI.Label(new Rect(r.x + 14, r.y + 49, r.width - 28, 18), StatsLine2(p), Style(_small, 12, TextAnchor.UpperLeft));
+        // glowing "MISSION FIT" badge: this mission recommends the instrument or needs the orbit
+        float chipRight = r.xMax - 12;
+        if (fit)
+        {
+            var br = new Rect(r.xMax - 126, r.y + 30, 116, 19);
+            float pulse = 0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 4f);
+            Fill(new Rect(br.x - 3, br.y - 3, br.width + 6, br.height + 6), new Color(Amber.r, Amber.g, Amber.b, 0.08f + 0.14f * pulse));
+            Fill(br, new Color(0.22f, 0.13f, 0.02f, 0.96f));
+            Fill(new Rect(br.x, br.y, br.width, 1), Amber);
+            Fill(new Rect(br.x, br.yMax - 1, br.width, 1), Amber);
+            if (_fitLabel == null) _fitLabel = StationProgress.Star + " MISSION FIT";
+            var old = GUI.contentColor;
+            GUI.contentColor = Color.Lerp(Amber, Color.white, 0.25f * pulse);
+            GUI.Label(br, _fitLabel, _chipText);
+            GUI.contentColor = old;
+            chipRight = br.x - 8;
+        }
+
+        // colour-coded stat chips: $M, kg, W, Mbps, m/s, Sci
+        var chips = ChipsFor(p);
+        float cx = r.x + 14;
+        var oldColor = GUI.contentColor;
+        for (int i = 0; i < chips.Count; i++)
+        {
+            var c = chips[i];
+            if (c.W <= 0f) { _tmp.text = c.Text; c.W = _chipText.CalcSize(_tmp).x + 14f; }
+            if (cx + c.W > chipRight) break;
+            var cr = new Rect(cx, r.y + 31, c.W, 17);
+            Color cc = unlocked ? c.C : Color.Lerp(c.C, Dim, 0.75f);
+            Fill(cr, new Color(cc.r, cc.g, cc.b, unlocked ? 0.16f : 0.07f));
+            Fill(new Rect(cr.x, cr.y, 2, cr.height), new Color(cc.r, cc.g, cc.b, unlocked ? 0.95f : 0.4f));
+            GUI.contentColor = cc;
+            GUI.Label(cr, c.Text, _chipText);
+            cx += c.W + 5f;
+        }
+        GUI.contentColor = oldColor;
+
+        GUI.Label(new Rect(r.x + 14, r.y + 51, r.width - 28, 18), DetailLine(p), Style(_small, 12, TextAnchor.UpperLeft));
         GUI.Label(new Rect(r.x + 14, r.y + 68, r.width - 28, r.height - 70), Col(p.EducationalTooltip, unlocked ? new Color(0.72f, 0.78f, 0.86f) : Dim), tipStyle);
 
         if (hover)
-            Hover(p.Name + "  -  " + PhaseXDatabase.CategoryTitle(p.Category) + (MissionCalculator.IsSingleSlot(p.Category) ? " (single slot)" : ""),
+            Hover(p.Name + "  -  " + PhaseXDatabase.CategoryTitle(p.Category) + (MissionCalculator.IsSingleSlot(p.Category) ? " (single slot)" : "") + (fit ? "  -  MISSION FIT" : ""),
                 p.EducationalTooltip);
 
         if (GUI.Button(r, GUIContent.none, GUIStyle.none))
         {
-            if (!unlocked) Flash($"{p.Name} unlocks at Level {p.UnlockLevel} (or in Sandbox [F4]).");
+            if (!unlocked) { StationAudio.Buzzer(); Flash($"{p.Name} unlocks at Level {p.UnlockLevel} (or in Sandbox [F4])."); }
             else _calc.TogglePart(p);
         }
     }
 
-    static string StatsLine(SpacecraftPart p)
+    /// <summary>The stat chips of a part (cost, mass, power, data, delta-V, science). Built once per part.</summary>
+    List<StatChip> ChipsFor(SpacecraftPart p)
     {
-        var bits = new List<string> { Col(MissionCalculator.Money(p.CostMillionUSD), Amber) };
-        if (p.MassKg > 0) bits.Add($"{p.MassKg:0.#} kg");
-        if (p.PowerWatts > 0) bits.Add(Col($"+{p.PowerWatts:0} W", Green));
-        else if (p.PowerWatts < 0) bits.Add(Col($"{p.PowerWatts:0} W", Red));
-        if (p.ScienceScore > 0) bits.Add(Col($"+{p.ScienceScore:0} science", Cyan));
-        bits.Add($"rel {p.Reliability * 100f:0.#}%");
-        return string.Join("    ", bits);
+        if (_chips.TryGetValue(p.Id, out var list)) return list;
+        list = new List<StatChip> { new StatChip { Text = MissionCalculator.Money(p.CostMillionUSD), C = Amber } };
+        if (p.MassKg > 0) list.Add(new StatChip { Text = $"{p.MassKg:0.#} kg", C = new Color(0.72f, 0.77f, 0.84f) });
+        if (p.PowerWatts > 0) list.Add(new StatChip { Text = $"+{p.PowerWatts:0} W", C = Green });
+        else if (p.PowerWatts < 0) list.Add(new StatChip { Text = $"{p.PowerWatts:0} W", C = Red });
+        if (p.DataRateMbps > 0) list.Add(new StatChip { Text = $"{p.DataRateMbps:0.##} Mbps", C = new Color(0.3f, 0.75f, 1f) });
+        if (p.DeltaV > 0) list.Add(new StatChip { Text = (p.Category == PartCategory.Orbit ? "needs " : "") + $"{p.DeltaV:0} m/s", C = new Color(1f, 0.6f, 0.15f) });
+        if (p.ScienceScore > 0) list.Add(new StatChip { Text = $"+{p.ScienceScore:0} Sci", C = new Color(0.35f, 0.95f, 0.55f) });
+        _chips[p.Id] = list;
+        return list;
     }
 
-    static string StatsLine2(SpacecraftPart p)
+    /// <summary>The grey detail line under the chips: capacity, reliability, lifetime. Built once per part.</summary>
+    string DetailLine(SpacecraftPart p)
     {
+        if (_line2.TryGetValue(p.Id, out var s)) return s;
         var bits = new List<string>();
         switch (p.Category)
         {
             case PartCategory.LaunchVehicle: bits.Add($"Lifts {p.MaxPayloadCapacityKg:0} kg"); break;
             case PartCategory.Structure: bits.Add($"Carries {p.MaxPayloadCapacityKg:0} kg of parts"); break;
-            case PartCategory.Propulsion: bits.Add($"{p.DeltaV:0} m/s for a {p.MaxPayloadCapacityKg:0} kg craft"); break;
+            case PartCategory.Propulsion: bits.Add($"for a {p.MaxPayloadCapacityKg:0} kg craft"); break;
             case PartCategory.Orbit:
-                bits.Add(p.DeltaV > 0 ? $"Insertion +{p.DeltaV:0} m/s" : "No insertion burn");
+                bits.Add(p.DeltaV > 0 ? "insertion burn" : "No insertion burn");
                 if (p.StationKeepingDvPerMonth > 0) bits.Add($"keep {p.StationKeepingDvPerMonth:0} m/s/month");
                 break;
-            case PartCategory.Comms: bits.Add($"Downlink {p.DataRateMbps:0.##} Mbps"); break;
-            case PartCategory.Payload: bits.Add($"Generates {p.DataRateMbps:0.##} Mbps"); break;
+            case PartCategory.Comms: bits.Add("downlink"); break;
+            case PartCategory.Payload: if (p.DataRateMbps > 0) bits.Add("generates data"); break;
         }
+        bits.Add($"rel {p.Reliability * 100f:0.#}%");
         if (p.LifetimeMonths > 0) bits.Add($"life {p.LifetimeMonths:0} mo");
         if (p.IsSolar) bits.Add("solar");
-        return Col(string.Join("    ", bits), Dim);
+        s = Col(string.Join("    ", bits), Dim);
+        _line2[p.Id] = s;
+        return s;
     }
 
     // ---------------------------------------------------------------- right: telemetry + validation + launch
@@ -491,12 +622,21 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
         float w = RightRect.width;
         GUI.Label(new Rect(16, 10, w - 32, 22), "LIVE TELEMETRY  //  6 RESOURCES", _h2);
 
+        // The bar fills glide towards their real values (unscaled time, once per frame, never NaN).
+        bool step = Event.current.type == EventType.Repaint && Time.frameCount != _gaugeFrame;
+        float glide = Mathf.Clamp01(Time.unscaledDeltaTime * 10f);
         float y = 40;
+        int gi = 0;
         foreach (var g in rep.Gauges)
         {
-            DrawGauge(new Rect(16, y, w - 32, 54), g);
+            float target = Mathf.Clamp01(g.Ratio);
+            if (float.IsNaN(target)) target = 0f;
+            if (step) _gaugeShown[gi] = float.IsNaN(_gaugeShown[gi]) ? target : Mathf.Lerp(_gaugeShown[gi], target, glide);
+            DrawGauge(new Rect(16, y, w - 32, 54), g, _gaugeShown[gi], target);
             y += 58;
+            gi++;
         }
+        if (step) _gaugeFrame = Time.frameCount;
 
         var sc = _calc.CurrentScenario;
         Color sciC = rep.Science >= sc.TargetScience ? Green : Red;
@@ -554,7 +694,7 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
         GUI.EndGroup();
     }
 
-    void DrawGauge(Rect r, ResourceGauge g)
+    void DrawGauge(Rect r, ResourceGauge g, float shown, float target)
     {
         float ratio = g.Ratio;
         Color c;
@@ -569,7 +709,11 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
 
         var bar = new Rect(r.x, r.y + 24, r.width, 14);
         Fill(bar, Track);
-        Fill(new Rect(bar.x, bar.y, bar.width * Mathf.Clamp01(ratio), bar.height), c);
+        float fillW = bar.width * Mathf.Clamp01(shown);
+        Fill(new Rect(bar.x, bar.y, fillW, bar.height), c);
+        Fill(new Rect(bar.x, bar.y, fillW, 3), new Color(1f, 1f, 1f, 0.16f));                 // top highlight
+        if (Mathf.Abs(shown - target) > 0.004f && fillW > 2f)                                   // bright leading edge while the bar moves
+            Fill(new Rect(bar.x + fillW - 3, bar.y - 1, 3, bar.height + 2), new Color(1f, 1f, 1f, 0.85f));
         if (!g.LowerIsBetter || g.Limit > 0f) Fill(new Rect(bar.x + bar.width - 2, bar.y - 3, 2, bar.height + 6), new Color(1, 1, 1, 0.5f));
         GUI.Label(new Rect(r.x, r.y + 38, r.width, 16),
             Col(g.LowerIsBetter ? "must stay under the limit" : "must reach the target", new Color(0.4f, 0.47f, 0.56f)),
@@ -595,6 +739,11 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
         GUI.Label(new Rect(ViewportRect.xMax - 416, ViewportRect.y + 14, 400, 18),
             Col(sc.IsSandbox ? "SANDBOX" : "LEVEL " + sc.DifficultyLevel, Amber) + Col("   |   SCORE ", Dim) + $"{_calc.Report.Score:0}",
             Style(_labelBold, 13, TextAnchor.UpperRight));
+        int bestStars = StationProgress.BestStars(sc.Id);
+        GUI.Label(new Rect(ViewportRect.xMax - 416, ViewportRect.y + 34, 400, 18),
+            bestStars > 0 ? Col("MISSION BEST  ", Dim) + Col(StationProgress.StarText(bestStars), StarGold) + $"  {StationProgress.BestScore(sc.Id):0} / 100"
+                          : Col("MISSION BEST  not flown yet", Dim),
+            Style(_labelBold, 12, TextAnchor.UpperRight));
 
         if (_reportAt > 0f || _simStartAt > 0f)
         {
@@ -702,6 +851,15 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
             : $"    SCORE {r.Score:0} / 100";
         GUI.Label(new Rect(40, 94, w - 80, 24), Col(sc.Title.ToUpperInvariant(), Cyan) + Col(scoreText, TextC), Style(_labelBold, 16, TextAnchor.UpperLeft));
 
+        // personal record for this mission (saved between sessions)
+        int recStars = StationProgress.BestStars(sc.Id);
+        float recScore = StationProgress.BestScore(sc.Id);
+        string record = recStars > 0 || recScore > 0f
+            ? Col("MISSION BEST  ", Dim) + Col(StationProgress.StarText(recStars), StarGold) + Col($"  {recScore:0} / 100", TextC) +
+              (_newBest && !inFlight && r.MissionReady ? "    " + Col("NEW PERSONAL BEST!", Green) : "")
+            : Col("MISSION BEST  not flown yet - complete the flight to earn stars", Dim);
+        GUI.Label(new Rect(40, 116, w - 80, 20), record, Style(_labelBold, 13, TextAnchor.UpperLeft));
+
         // stars (rotated squares; no glyphs needed)
         for (int i = 0; i < 3; i++)
         {
@@ -762,7 +920,7 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
         }
         else if (GUI.Button(new Rect(40, h - 40 - 62, 320, 62), "BACK TO DESIGN  [ESC]", _btn)) CloseReport();
         if (canNext && GUI.Button(new Rect(w - 40 - 420, h - 40 - 62, 420, 62), $"NEXT MISSION: {next.ShortName}  [ENTER]", _launchReady))
-            _calc.LoadScenario(next);
+            SwitchScenario(next);
         if (!canNext && !r.MissionReady && GUI.Button(new Rect(w - 40 - 420, h - 40 - 62, 420, 62), "FIX THE DESIGN  [ENTER]", _launchNot))
             CloseReport();
     }
@@ -793,11 +951,11 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
         }
     }
 
-    readonly Dictionary<string, GUIStyle> _styleCache = new Dictionary<string, GUIStyle>();
+    readonly Dictionary<(GUIStyle, int, TextAnchor), GUIStyle> _styleCache = new Dictionary<(GUIStyle, int, TextAnchor), GUIStyle>();
 
     GUIStyle Style(GUIStyle baseStyle, int size, TextAnchor align)
     {
-        string key = baseStyle.name + size + align;
+        var key = (baseStyle, size, align);
         if (_styleCache.TryGetValue(key, out var s)) return s;
         s = new GUIStyle(baseStyle) { fontSize = size, alignment = align };
         _styleCache[key] = s;
@@ -897,5 +1055,8 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
         _chip = Chip("px_chip", new Color(0.05f, 0.07f, 0.11f), new Color(0.12f, 0.17f, 0.24f), new Color(0.4f, 0.47f, 0.56f));
         _chipDone = Chip("px_chip_done", new Color(0.05f, 0.14f, 0.19f), CyanDim, Cyan);
         _chipOn = Chip("px_chip_on", Amber, new Color(1f, 0.85f, 0.5f), new Color(0.08f, 0.05f, 0.02f));
+
+        _starSmall = Text("px_star", 9, StarGold, FontStyle.Bold, TextAnchor.UpperRight, false);
+        _chipText = Text("px_chiptext", 11, Color.white, FontStyle.Bold, TextAnchor.MiddleCenter, false);
     }
 }

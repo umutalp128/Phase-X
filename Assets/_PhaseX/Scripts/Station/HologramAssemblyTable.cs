@@ -33,7 +33,11 @@ namespace PhaseX.Station
         Transform _model;
         bool _dirty = true;
         int _xray = -1;
-        Material _ringMat, _beamMat;
+        Material _ringMat, _beamMat, _fxMat;
+        // Phase 5 effects, found by name in Start so a station saved in a scene has them too
+        Transform _calRing, _scan;
+        Transform _rim;
+        LineRenderer _calLine;
         readonly List<SpacecraftPart> _inspectable = new List<SpacecraftPart>();
 
         public bool XRayActive => _xray >= 0 && _xray < _inspectable.Count;
@@ -47,6 +51,7 @@ namespace PhaseX.Station
             if (beam != null) beam.sharedMaterial = _beamMat;
 
             EnsureLvMinis();
+            EnsureEffects();
             _calc = MissionCalculator.Instance;
             if (_calc != null) _calc.OnDesignChanged += MarkDirty;
             _dirty = true;
@@ -55,6 +60,9 @@ namespace PhaseX.Station
         void OnDestroy()
         {
             if (_calc != null) _calc.OnDesignChanged -= MarkDirty;
+            StationKit.Kill(_ringMat);
+            StationKit.Kill(_beamMat);
+            StationKit.Kill(_fxMat);
         }
 
         // Design changes arrive while the room is hidden behind the monitor GUI, so rebuild lazily when visible again.
@@ -82,6 +90,7 @@ namespace PhaseX.Station
             }
             _xray++;
             if (_xray >= _inspectable.Count) _xray = -1;
+            StationAudio.XRayPulse();
             Rebuild();
         }
 
@@ -91,6 +100,8 @@ namespace PhaseX.Station
             if (_calc == null) return;
             if (_model != null) Destroy(_model.gameObject);
             _model = null;
+            if (_rim != null) Destroy(_rim.gameObject);     // the highlight rim of the previously inspected part
+            _rim = null;
 
             _inspectable.Clear();
             _inspectable.AddRange(_calc.SelectedParts.Where(p => p.Category != PartCategory.Orbit).OrderBy(p => (int)p.Category));
@@ -143,6 +154,8 @@ namespace PhaseX.Station
 
             var ghost = StationKit.Ghost(new Color(0.3f, 0.8f, 1f, 0.13f));
             bool isLv = part.Category == PartCategory.LaunchVehicle;
+            Bounds focus = default;
+            bool any = false;
             if (_model != null)
             {
                 string keep = "Module_" + part.Id;
@@ -152,8 +165,15 @@ namespace PhaseX.Station
                     for (var t = r.transform; t != null && t != _model; t = t.parent)
                         if (t.name == keep) { inPart = true; break; }
                     if (isLv || !inPart) r.sharedMaterial = ghost;
+                    else Grow(ref focus, ref any, r.bounds);
                 }
             }
+            if (isLv && lvMinis != null)
+                foreach (var mini in lvMinis)
+                    if (mini != null && mini.activeSelf)
+                        foreach (var r in mini.GetComponentsInChildren<Renderer>()) Grow(ref focus, ref any, r.bounds);
+            // glowing highlight rim: two amber rings around the inspected component (it turns with the hologram)
+            if (any) BuildRim(focus, isLv || _model == null ? transform : _model);
             // while a spacecraft part is inspected, the launcher miniature steps aside (Rebuild brings it back)
             if (!isLv)
                 for (int i = 0; i < lvMinis.Length; i++)
@@ -177,6 +197,7 @@ namespace PhaseX.Station
                 if (_beamMat.HasProperty("_BaseColor")) _beamMat.SetColor("_BaseColor", bc);
             }
             if (holoLight != null) holoLight.color = c;
+            AnimateEffects(c, dt);
 
             // an engineering failure makes the hologram flicker, so the room itself says "something is wrong"
             if (_model != null) _model.gameObject.SetActive(!warn || Mathf.PerlinNoise(Time.time * 16f, 3.7f) > 0.32f);
@@ -193,6 +214,71 @@ namespace PhaseX.Station
                         Vector3 away = t.position - cam.transform.position;
                         if (away.sqrMagnitude > 0.01f) t.rotation = Quaternion.LookRotation(away.normalized, Vector3.up);
                     }
+            }
+        }
+
+        static void Grow(ref Bounds b, ref bool any, Bounds add)
+        {
+            if (any) b.Encapsulate(add); else { b = add; any = true; }
+        }
+
+        void BuildRim(Bounds b, Transform parent)
+        {
+            _rim = StationKit.Node("XRayHighlightRim", parent, Vector3.zero);
+            _rim.position = b.center;
+            float radius = Mathf.Max(0.14f, b.extents.magnitude * 0.82f);
+            StationKit.Circle(_rim, "RimLevel", radius, StationKit.Amber, 0.022f);
+            StationKit.Circle(_rim, "RimUpright", radius, new Color(1f, 0.85f, 0.45f, 0.75f), 0.014f, new Vector3(90f, 0f, 0f));
+        }
+
+        /// <summary>
+        /// Phase 5 hologram effects, built at Play time (so a station saved in a scene gets them too): a tilted
+        /// calibration ring that turns against the hologram, and vertical laser scan lines for NASA X-Ray mode.
+        /// </summary>
+        void EnsureEffects()
+        {
+            if (holoAnchor == null || _calRing != null) return;
+            _calRing = StationKit.Node("CalibrationRing", holoAnchor, new Vector3(0f, -0.1f, 0f), new Vector3(11f, 0f, 0f));
+            _calLine = StationKit.Circle(_calRing, "Ring", 1.05f, StationKit.Cyan, 0.012f);
+            for (int i = 0; i < 24; i++)
+            {
+                float deg = i * 15f, a = deg * Mathf.Deg2Rad;
+                bool major = i % 6 == 0;
+                StationKit.Box(_calRing, "Tick", new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a)) * 1.05f,
+                    major ? new Vector3(0.16f, 0.018f, 0.018f) : new Vector3(0.07f, 0.01f, 0.01f), _ringMat, false, new Vector3(0f, -deg, 0f));
+            }
+
+            _fxMat = new Material(StationKit.Ghost(new Color(1f, 0.68f, 0.18f, 0.5f)));
+            _scan = StationKit.Node("XRayScanLines", holoAnchor, Vector3.zero);
+            for (int i = -3; i <= 3; i++)
+                StationKit.Box(_scan, "Laser", new Vector3(0f, 0f, i * 0.24f), new Vector3(0.012f, 1.75f, 0.012f), _fxMat);
+            _scan.gameObject.SetActive(false);
+        }
+
+        void AnimateEffects(Color status, float dt)
+        {
+            bool xray = XRayActive;
+            if (_calRing != null) _calRing.Rotate(0f, (xray ? -42f : -15f) * dt, 0f, Space.World);
+            if (_calLine != null)
+            {
+                var cc = status; cc.a = 0.6f;
+                _calLine.startColor = _calLine.endColor = cc;
+            }
+            if (_scan != null)
+            {
+                if (_scan.gameObject.activeSelf != xray) _scan.gameObject.SetActive(xray);
+                if (xray)
+                {
+                    _scan.localPosition = new Vector3(Mathf.Sin(Time.time * 1.7f) * 0.8f, 0f, 0f);
+                    var lc = StationKit.Amber; lc.a = 0.38f + 0.22f * Mathf.Sin(Time.time * 9f);
+                    if (_fxMat.HasProperty("_Color")) _fxMat.SetColor("_Color", lc);
+                    if (_fxMat.HasProperty("_BaseColor")) _fxMat.SetColor("_BaseColor", lc);
+                }
+            }
+            if (_rim != null)
+            {
+                _rim.localScale = Vector3.one * (1f + 0.07f * Mathf.Sin(Time.time * 5f));
+                _rim.Rotate(0f, 70f * dt, 0f, Space.Self);
             }
         }
 

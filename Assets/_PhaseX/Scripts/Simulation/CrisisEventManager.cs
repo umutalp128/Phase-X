@@ -207,6 +207,7 @@ public class CrisisEventManager : MonoBehaviour
         ev.Met = LunarFlightPlan.FormatMet(_sim.State.MetHours);
         Active = ev;
         _sim.SetHeld(true);
+        PhaseX.Station.StationAudio.CrisisKlaxon();
         _sim.AddLog("RED ALERT: " + ev.Title);
         _sim.TriggerAlertFlash(type == CrisisType.Micrometeorite ? new Color(1f, 0.6f, 0.3f) : type == CrisisType.SolarStorm ? new Color(1f, 0.85f, 0.3f) : new Color(1f, 0.25f, 0.25f));
     }
@@ -220,6 +221,7 @@ public class CrisisEventManager : MonoBehaviour
         Active.Chosen = index;
         Active.Result = opt.Resolve();
         CheckSystemicConsequences(Active.Result);
+        if (Active.Result.Success) PhaseX.Station.StationAudio.Chime(); else PhaseX.Station.StationAudio.Buzzer();
         _sim.AddLog($"Decision: {opt.Title}. {Active.Result.Text}");
     }
 
@@ -230,6 +232,7 @@ public class CrisisEventManager : MonoBehaviour
         History.Add(Active);
         Active = null;
         _sim.SetHeld(false);
+        PhaseX.Station.StationAudio.Blip();
     }
 
     void CheckSystemicConsequences(CrisisResult r)

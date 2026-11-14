@@ -39,6 +39,8 @@ namespace PhaseX.Player
             var mgr = GameViewModeManager.Instance;
             if (mgr == null || mgr.Mode != GameViewMode.FreeRoam3D || mgr.InTransition || _player == null) return;
             if (mgr.IsLaunchModeLocked || PhaseX.UI.PauseMenuController.IsPaused) return;
+            // The key press that just closed a panel (E) or left another screen must not act on the room as well.
+            bool justReturned = mgr.FreeRoamSinceFrame == Time.frameCount;
             var cam = mgr.Camera;
             if (cam == null) return;
 
@@ -51,7 +53,7 @@ namespace PhaseX.Player
                 if (Current != null) Prompt = Current.GetInteractionPrompt();
             }
 
-            if (Current != null && PhaseXInput.Down(PhaseXInput.K.E))
+            if (Current != null && !justReturned && PhaseXInput.Down(PhaseXInput.K.E))
             {
                 StationAudio.Blip();
                 Current.Interact(_player);

@@ -165,6 +165,9 @@ public class TrajectorySimulator : MonoBehaviour
         return null;
     }
 
+    static bool IsEngineBurn(string label) =>
+        !string.IsNullOrEmpty(label) && (label.IndexOf("BURN", StringComparison.Ordinal) >= 0 || label.IndexOf("DESCENT", StringComparison.Ordinal) >= 0);
+
     void AddLog(double metH, string text)
     {
         Log.Add((LunarFlightPlan.FormatMet(metH), text));
@@ -368,6 +371,8 @@ public class TrajectorySimulator : MonoBehaviour
             AddLog(seg.MetStartH, seg.EventText);
             BurnFlash = seg.BurnLabel;
             BurnFlashUntil = Time.unscaledTime + 2.5f;
+            // engine burns the spacecraft (or its upper stage) flies itself: TLI, LOI, powered descent
+            if (IsEngineBurn(seg.BurnLabel)) PhaseX.Station.StationAudio.BurnIgnition();
             if (seg.DvCost > 0f)
             {
                 DvRemaining -= seg.DvCost;
@@ -391,6 +396,7 @@ public class TrajectorySimulator : MonoBehaviour
             AddLog(met, arrived);
             FlightSummary = $"{ModeName(Plan.Mode)}: {arrived} Mission elapsed time {LunarFlightPlan.FormatMet(met)}. " +
                             $"Delta-V margin left: {Mathf.Max(0f, DvRemaining):0} m/s.";
+            PhaseX.Station.StationAudio.MissionSuccessFanfare();   // only ready designs ever fly
             OnFlightComplete?.Invoke();
         }
 

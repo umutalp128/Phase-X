@@ -47,12 +47,12 @@ namespace PhaseX.EditorTools
         static int RemoveExisting()
         {
             int n = 0;
-            foreach (var s in Object.FindObjectsByType<MissionControlStation>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            foreach (var s in Object.FindObjectsByType<MissionControlStation>(FindObjectsInactive.Include))
             {
                 Undo.DestroyObjectImmediate(s.gameObject);
                 n++;
             }
-            foreach (var p in Object.FindObjectsByType<PhaseXPlayerController>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            foreach (var p in Object.FindObjectsByType<PhaseXPlayerController>(FindObjectsInactive.Include))
             {
                 Undo.DestroyObjectImmediate(p.gameObject);
                 n++;

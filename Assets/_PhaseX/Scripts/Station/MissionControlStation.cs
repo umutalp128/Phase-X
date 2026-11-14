@@ -46,7 +46,9 @@ namespace PhaseX.Station
         string _wallOverride;
         float _wallTimer, _alarmUntil;
         Color _shown = StationKit.Cyan;
-        Renderer[] _labels;
+        readonly List<TextMesh> _labelTexts = new List<TextMesh>();
+        readonly List<Renderer> _labels = new List<Renderer>();
+        float _labelRefresh;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         static void ResetStatics() => Instance = null;
@@ -55,10 +57,11 @@ namespace PhaseX.Station
 
         void Start()
         {
+            // Phase 5 dressing: the same call the builder makes, so a station saved in a scene earlier gets it too
+            StationBuilder.EnsureExteriorDetail(transform);
+            StationBuilder.EnsureSkyStars(transform);
             StationKit.RefreshFonts(transform);
-            var texts = GetComponentsInChildren<TextMesh>(true);
-            _labels = new Renderer[texts.Length];
-            for (int i = 0; i < texts.Length; i++) _labels[i] = texts[i].GetComponent<Renderer>();
+            RefreshLabels();
             _stripMat = StationKit.Glow(StationKit.Cyan);
             if (statusStrips != null) foreach (var r in statusStrips) if (r != null) r.sharedMaterial = _stripMat;
             _beaconMat = StationKit.Glow(StationKit.Amber, 0.2f);
@@ -81,7 +84,28 @@ namespace PhaseX.Station
                 _calc.OnDesignChanged -= Recompute;
                 _calc.OnScenarioChanged -= Recompute;
             }
+            StationKit.Kill(_stripMat);
+            StationKit.Kill(_beaconMat);
             if (Instance == this) Instance = null;
+        }
+
+        /// <summary>
+        /// Collect every 3D label under the station again. Called at start, whenever a destroyed label is found and
+        /// every couple of seconds, so labels created or destroyed later (hologram rebuilds, rebuilt miniatures) are
+        /// always culled correctly and never touched after they are gone. Reuses its lists: no garbage.
+        /// </summary>
+        public void RefreshLabels()
+        {
+            _labelRefresh = 2f;
+            _labels.Clear();
+            GetComponentsInChildren(true, _labelTexts);
+            for (int i = 0; i < _labelTexts.Count; i++)
+            {
+                var tm = _labelTexts[i];
+                var r = tm != null ? tm.GetComponent<Renderer>() : null;
+                if (r != null) _labels.Add(r);
+            }
+            _labelTexts.Clear();
         }
 
         void Recompute()
@@ -149,11 +173,15 @@ namespace PhaseX.Station
         {
             var mgr = PhaseX.Player.GameViewModeManager.Instance;
             var cam = mgr != null ? mgr.Camera : null;
-            if (cam == null || _labels == null) return;
+            if (cam == null) return;
+            _labelRefresh -= Time.unscaledDeltaTime;
+            if (_labelRefresh <= 0f) RefreshLabels();
             Vector3 eye = cam.transform.position;
-            foreach (var r in _labels)
+            bool stale = false;
+            for (int i = 0; i < _labels.Count; i++)
             {
-                if (r == null) continue;
+                var r = _labels[i];
+                if (r == null) { stale = true; continue; }     // destroyed since the last refresh
                 Vector3 p = r.transform.position;
                 Vector3 to = p - eye;
                 bool visible = Vector3.Dot(r.transform.forward, to) > 0f;   // text reads from the side its forward points away from
@@ -161,6 +189,7 @@ namespace PhaseX.Station
                     visible = !Physics.Linecast(eye, p - to.normalized * 0.06f, ~(1 << 2), QueryTriggerInteraction.Ignore);
                 if (r.enabled != visible) r.enabled = visible;
             }
+            if (stale) RefreshLabels();
         }
 
         void RefreshWall()

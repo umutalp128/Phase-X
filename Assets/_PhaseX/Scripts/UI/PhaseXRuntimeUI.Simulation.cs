@@ -17,21 +17,40 @@ public partial class PhaseXRuntimeUI
     void HandleSimKeys()
     {
         var sim = Sim;
-        if (PhaseXInput.Down(PhaseXInput.K.Space)) sim.TogglePause();
-        if (PhaseXInput.Down(PhaseXInput.K.Z)) sim.SetWarp(1f);
-        if (PhaseXInput.Down(PhaseXInput.K.X)) sim.SetWarp(2f);
-        if (PhaseXInput.Down(PhaseXInput.K.C)) sim.SetWarp(4f);
-        if (PhaseXInput.Down(PhaseXInput.K.D1)) sim.SetCamera(SimCamera.Overview);
-        if (PhaseXInput.Down(PhaseXInput.K.D2)) sim.SetCamera(SimCamera.Chase);
-        if (PhaseXInput.Down(PhaseXInput.K.D3)) sim.SetCamera(SimCamera.EarthView);
-        if (PhaseXInput.Down(PhaseXInput.K.D4)) sim.SetCamera(SimCamera.MoonView);
-        if (PhaseXInput.Down(PhaseXInput.K.Tab)) sim.CycleCamera();
-        if (PhaseXInput.Down(PhaseXInput.K.Escape) || PhaseXInput.Down(PhaseXInput.K.Enter)) { _reportAt = -1f; _modal = Modal.Report; }
+        if (PhaseXInput.Down(PhaseXInput.K.Space)) SimPause(sim);
+        if (PhaseXInput.Down(PhaseXInput.K.Z)) SimWarp(sim, 1f);
+        if (PhaseXInput.Down(PhaseXInput.K.X)) SimWarp(sim, 2f);
+        if (PhaseXInput.Down(PhaseXInput.K.C)) SimWarp(sim, 4f);
+        if (PhaseXInput.Down(PhaseXInput.K.D1)) SimCam(sim, SimCamera.Overview);
+        if (PhaseXInput.Down(PhaseXInput.K.D2)) SimCam(sim, SimCamera.Chase);
+        if (PhaseXInput.Down(PhaseXInput.K.D3)) SimCam(sim, SimCamera.EarthView);
+        if (PhaseXInput.Down(PhaseXInput.K.D4)) SimCam(sim, SimCamera.MoonView);
+        if (PhaseXInput.Down(PhaseXInput.K.Tab)) SimCam(sim, (SimCamera)(((int)sim.CameraMode + 1) % 4));
+        if (PhaseXInput.Down(PhaseXInput.K.Escape) || PhaseXInput.Down(PhaseXInput.K.Enter)) { _reportAt = -1f; _modal = Modal.Report; PhaseX.Station.StationAudio.Blip(); }
 
         if (LaunchLocked) return;      // no scenario switch during an active launch
         var sc = PhaseXDatabase.Scenarios;
         int fn = PhaseXInput.FunctionKeyDown();
-        if (fn >= 0 && fn < sc.Count) _calc.LoadScenario(sc[fn]);
+        if (fn >= 0 && fn < sc.Count) SwitchScenario(sc[fn]);
+    }
+
+    // time-warp and camera switches, each with a UI tick (buttons and keys share these)
+    static void SimPause(TrajectorySimulator sim)
+    {
+        sim.TogglePause();
+        PhaseX.Station.StationAudio.Blip();
+    }
+
+    static void SimWarp(TrajectorySimulator sim, float warp)
+    {
+        sim.SetWarp(warp);
+        PhaseX.Station.StationAudio.Blip();
+    }
+
+    static void SimCam(TrajectorySimulator sim, SimCamera cam)
+    {
+        if (cam != sim.CameraMode) PhaseX.Station.StationAudio.Blip();
+        sim.SetCamera(cam);
     }
 
     void DrawSimulationHud()
@@ -237,7 +256,7 @@ public partial class PhaseXRuntimeUI
         GUI.BeginGroup(r);
         GUI.Label(new Rect(16, 6, 200, 18), Col("TIME WARP", Cyan), Style(_labelBold, 12, TextAnchor.UpperLeft));
         float bx = 16, by = 28, bw = 108, bh = 42;
-        if (GUI.Button(new Rect(bx, by, bw, bh), sim.Held ? "HELD\n<size=11>RED ALERT</size>" : sim.Paused ? "RESUME\n<size=11>[SPACE]</size>" : "PAUSE\n<size=11>[SPACE]</size>", sim.Paused || sim.Held ? _btnOn : _btn)) sim.TogglePause();
+        if (GUI.Button(new Rect(bx, by, bw, bh), sim.Held ? "HELD\n<size=11>RED ALERT</size>" : sim.Paused ? "RESUME\n<size=11>[SPACE]</size>" : "PAUSE\n<size=11>[SPACE]</size>", sim.Paused || sim.Held ? _btnOn : _btn)) SimPause(sim);
         WarpButton(sim, new Rect(bx + (bw + 6), by, bw, bh), 1f, "Z");
         WarpButton(sim, new Rect(bx + 2 * (bw + 6), by, bw, bh), 2f, "X");
         WarpButton(sim, new Rect(bx + 3 * (bw + 6), by, bw, bh), 4f, "C");
@@ -254,12 +273,12 @@ public partial class PhaseXRuntimeUI
     void WarpButton(TrajectorySimulator sim, Rect r, float warp, string key)
     {
         bool on = !sim.Paused && Mathf.Approximately(sim.Warp, warp);
-        if (GUI.Button(r, $"{warp:0}x\n<size=11>[{key}]</size>", on ? _btnOn : _btn)) sim.SetWarp(warp);
+        if (GUI.Button(r, $"{warp:0}x\n<size=11>[{key}]</size>", on ? _btnOn : _btn)) SimWarp(sim, warp);
     }
 
     void CamButton(TrajectorySimulator sim, Rect r, SimCamera cam, string key)
     {
-        if (GUI.Button(r, $"{CameraName(cam)}\n<size=11>[{key}]</size>", sim.CameraMode == cam ? _btnOn : _btn)) sim.SetCamera(cam);
+        if (GUI.Button(r, $"{CameraName(cam)}\n<size=11>[{key}]</size>", sim.CameraMode == cam ? _btnOn : _btn)) SimCam(sim, cam);
     }
 
     void DrawSimFooter()

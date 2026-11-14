@@ -79,6 +79,39 @@ namespace PhaseX.Station
             return l;
         }
 
+        /// <summary>A thin cylinder from a to b (parent space): struts, hoses, light beams.</summary>
+        public static Transform Rod(Transform parent, string name, Vector3 a, Vector3 b, float thickness, Material mat)
+        {
+            Vector3 d = b - a;
+            var t = Prim(PrimitiveType.Cylinder, parent, name, (a + b) * 0.5f, new Vector3(thickness, d.magnitude * 0.5f, thickness), mat);
+            if (d.sqrMagnitude > 1e-8f) t.localRotation = Quaternion.FromToRotation(Vector3.up, d.normalized);
+            return t;
+        }
+
+        /// <summary>
+        /// A glowing ring drawn with a LineRenderer in the local XZ plane of a new child (turn it with
+        /// <paramref name="euler"/>). The colour can be changed later through startColor / endColor.
+        /// </summary>
+        public static LineRenderer Circle(Transform parent, string name, float radius, Color color, float width, Vector3? euler = null, int segments = 64)
+        {
+            var t = Node(name, parent, Vector3.zero, euler);
+            var lr = t.gameObject.AddComponent<LineRenderer>();
+            lr.useWorldSpace = false;
+            lr.loop = true;
+            lr.positionCount = segments;
+            for (int i = 0; i < segments; i++)
+            {
+                float a = i / (float)segments * Mathf.PI * 2f;
+                lr.SetPosition(i, new Vector3(Mathf.Cos(a) * radius, 0f, Mathf.Sin(a) * radius));
+            }
+            lr.widthMultiplier = width;
+            lr.sharedMaterial = PhaseXMaterials.Sprite(Color.white);
+            lr.startColor = lr.endColor = color;
+            lr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            lr.receiveShadows = false;
+            return lr;
+        }
+
         // ------------------------------------------------------------------ materials
 
         /// <summary>A private emissive material instance whose colour can be changed later with <see cref="SetGlow"/>.</summary>

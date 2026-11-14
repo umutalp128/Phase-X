@@ -46,7 +46,14 @@ namespace PhaseX.UI
         string _fadeCaption;
 
         GUIStyle _label, _bold, _title, _btn, _btnPrimary, _box;
-        readonly Dictionary<string, GUIStyle> _cache = new Dictionary<string, GUIStyle>();
+        readonly Dictionary<(GUIStyle, int, TextAnchor), GUIStyle> _cache = new Dictionary<(GUIStyle, int, TextAnchor), GUIStyle>();
+        readonly Dictionary<string, string> _stripped = new Dictionary<string, string>();
+        readonly GUIContent _tmp = new GUIContent();
+
+        // Phase 5: animated reticle and XP bar, and the parsed interaction prompt ("[E] Do something")
+        float _reticle, _xpBar;
+        string _promptRaw, _promptKey, _promptText;
+        float _promptTextW;
         readonly List<Texture2D> _textures = new List<Texture2D>();
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
@@ -62,6 +69,7 @@ namespace PhaseX.UI
         void OnDestroy()
         {
             foreach (var t in _textures) if (t != null) Destroy(t);
+            _textures.Clear();
             if (Instance == this) Instance = null;
         }
 
@@ -112,7 +120,14 @@ namespace PhaseX.UI
 
         void Update()
         {
-            _fade = Mathf.MoveTowards(_fade, _fadeTarget, _fadeSpeed * Time.unscaledDeltaTime);
+            float udt = Mathf.Min(Time.unscaledDeltaTime, 0.1f);
+            _fade = Mathf.MoveTowards(_fade, _fadeTarget, _fadeSpeed * udt);
+            // reticle locks on and the XP bar glides on unscaled time, so both still move while the game is paused
+            var inter = PlayerInteractionSystem.Instance;
+            bool hot = inter != null && inter.Current != null && _mgr != null && _mgr.Mode == GameViewMode.FreeRoam3D;
+            _reticle = Mathf.MoveTowards(_reticle, hot ? 1f : 0f, udt * 7f);
+            _xpBar = Mathf.Lerp(_xpBar, StationProgress.RankProgress, Mathf.Clamp01(udt * 6f));
+            if (float.IsNaN(_xpBar)) _xpBar = 0f;
 
             if (!PanelOpen || Time.frameCount == _panelFrame) return;
             if (_pButtons != null)
@@ -153,11 +168,11 @@ namespace PhaseX.UI
             if (_toast != null && Time.unscaledTime < _toastUntil && !(_mgr.Mode == GameViewMode.LaunchSequenceCinematic && _mgr.FlightPhase))
             {
                 float a = Mathf.Clamp01((_toastUntil - Time.unscaledTime) / 0.6f);
-                var r = new Rect(W / 2 - 520, 150, 1040, 54);
+                var r = new Rect(W / 2 - 440, 150, 880, 54);     // between the checklist and the rank box
                 Fill(r, new Color(Ink.r, Ink.g, Ink.b, 0.9f * a));
                 Fill(new Rect(r.x, r.y, 6, r.height), new Color(_toastColor.r, _toastColor.g, _toastColor.b, a));
                 var old = GUI.color; GUI.color = new Color(1, 1, 1, a);
-                GUI.Label(new Rect(r.x + 22, r.y, r.width - 40, r.height), Col(_toast, _toastColor), Style(_bold, 18, TextAnchor.MiddleLeft));
+                GUI.Label(new Rect(r.x + 22, r.y, r.width - 40, r.height), Col(_toast, _toastColor), Style(_bold, _toast.Length > 78 ? 14 : 17, TextAnchor.MiddleLeft));
                 GUI.color = old;
             }
 
@@ -171,57 +186,134 @@ namespace PhaseX.UI
 
         void DrawFreeRoam()
         {
-            // crosshair: a dot with a ring that lights up over something usable
             var inter = PlayerInteractionSystem.Instance;
             bool hot = inter != null && inter.Current != null;
-            Color cc = hot ? StationKit.Amber : new Color(1, 1, 1, 0.75f);
-            Fill(new Rect(W / 2 - 2, H / 2 - 2, 4, 4), cc);
-            if (hot)
-            {
-                Fill(new Rect(W / 2 - 16, H / 2 - 1, 8, 2), cc); Fill(new Rect(W / 2 + 8, H / 2 - 1, 8, 2), cc);
-                Fill(new Rect(W / 2 - 1, H / 2 - 16, 2, 8), cc); Fill(new Rect(W / 2 - 1, H / 2 + 8, 2, 8), cc);
-                var r = new Rect(W / 2 - 360, H / 2 + 54, 720, 48);
-                Fill(r, Ink);
-                Fill(new Rect(r.x, r.yMax - 3, r.width, 3), StationKit.Amber);
-                GUI.Label(r, Col(inter.Prompt, Color.white), Style(_bold, 20, TextAnchor.MiddleCenter));
-            }
+            DrawReticle(hot);
+            if (hot) DrawPrompt(inter.Prompt);
 
             DrawChecklist();
             DrawXp();
             DrawXRayCaption();
 
             Shadowed(new Rect(0, H - 40, W, 28),
-                Col("[WASD] Walk    [SHIFT] Sprint    [MOUSE] Look    [E] Interact    [V] First / third person    [ESC] Pause & mouse sensitivity", Dim),
+                Col("[WASD] Walk    [SHIFT] Sprint    [MOUSE] Look    [E] Interact", Dim),
                 Style(_label, 14, TextAnchor.MiddleCenter));
+
+            // bottom corners: keycap hints for the camera toggle and the pause menu
+            var player = PhaseXPlayerController.Instance;
+            bool third = player != null && player.ThirdPerson;
+            var vr = new Rect(W - 24 - 330, H - 92, 330, 44);
+            Fill(vr, Ink);
+            Fill(new Rect(vr.xMax - 3, vr.y, 3, vr.height), StationKit.Cyan);
+            Keycap(new Rect(vr.x + 10, vr.y + 7, 34, 30), "V");
+            GUI.Label(new Rect(vr.x + 54, vr.y, vr.width - 64, vr.height),
+                Col("1st / 3rd Person", Color.white) + Col(third ? "   now: 3rd" : "   now: 1st", Dim), Style(_bold, 15, TextAnchor.MiddleLeft));
+
+            var er = new Rect(24, H - 92, 300, 44);
+            Fill(er, Ink);
+            Fill(new Rect(er.x, er.y, 3, er.height), StationKit.Amber);
+            Keycap(new Rect(er.x + 12, er.y + 7, 52, 30), "ESC");
+            GUI.Label(new Rect(er.x + 74, er.y, er.width - 84, er.height), Col("Pause  /  Settings", Color.white), Style(_bold, 15, TextAnchor.MiddleLeft));
+        }
+
+        /// <summary>
+        /// Crosshair. Idle: a small dot. Aiming at something usable: four NASA-style corner brackets close in around
+        /// the dot and breathe gently (<see cref="_reticle"/> animates 0 to 1 in Update).
+        /// </summary>
+        void DrawReticle(bool hot)
+        {
+            const float cx = W / 2, cy = H / 2;
+            Fill(new Rect(cx - 2, cy - 2, 4, 4), hot ? StationKit.Amber : new Color(1, 1, 1, 0.75f));
+            if (_reticle <= 0.02f) return;
+            float half = Mathf.Lerp(40f, 22f, _reticle) + (hot ? Mathf.Sin(Time.unscaledTime * 6f) * 1.5f : 0f);
+            const float len = 12f, thick = 2f;
+            Color c = StationKit.Amber; c.a = _reticle;
+            for (int sx = -1; sx <= 1; sx += 2)
+            for (int sy = -1; sy <= 1; sy += 2)
+            {
+                float x = cx + sx * half, y = cy + sy * half;
+                Fill(new Rect(sx > 0 ? x - len : x, sy > 0 ? y - thick : y, len, thick), c);     // arm along x, pointing inwards
+                Fill(new Rect(sx > 0 ? x - thick : x, sy > 0 ? y - len : y, thick, len), c);     // arm along y, pointing inwards
+            }
+            // short centre ticks between the brackets
+            Color t = c; t.a *= 0.55f;
+            Fill(new Rect(cx - half - 6, cy - 1, 6, 2), t); Fill(new Rect(cx + half, cy - 1, 6, 2), t);
+        }
+
+        /// <summary>The interaction prompt under the crosshair: a keycap badge for the key, then the action.</summary>
+        void DrawPrompt(string prompt)
+        {
+            if (string.IsNullOrEmpty(prompt)) return;
+            var style = Style(_bold, 20, TextAnchor.MiddleLeft);
+            if (prompt != _promptRaw)
+            {
+                _promptRaw = prompt;
+                int close = prompt.StartsWith("[") ? prompt.IndexOf(']') : -1;
+                _promptKey = close > 1 ? prompt.Substring(1, close - 1) : null;
+                _promptText = close > 1 ? prompt.Substring(close + 1).Trim() : prompt;
+                _tmp.text = _promptText;
+                _promptTextW = style.CalcSize(_tmp).x;
+            }
+            float capW = _promptKey == null ? 0f : 26f + _promptKey.Length * 12f;
+            float total = capW + (capW > 0f ? 14f : 0f) + _promptTextW;
+            var r = new Rect(W / 2 - total / 2 - 28, H / 2 + 58, total + 56, 50);
+            Fill(r, Ink);
+            Fill(new Rect(r.x, r.yMax - 3, r.width, 3), StationKit.Amber);
+            float x = r.x + 28;
+            if (capW > 0f)
+            {
+                Keycap(new Rect(x, r.y + 9, capW, 30), _promptKey);
+                x += capW + 14f;
+            }
+            GUI.Label(new Rect(x, r.y, _promptTextW + 8, r.height - 3), _promptText, style);
+        }
+
+        /// <summary>A keyboard keycap: light rim, dark face, a darker lower edge for depth, the key name centred.</summary>
+        void Keycap(Rect r, string key)
+        {
+            Fill(r, new Color(0.72f, 0.78f, 0.86f));
+            Fill(new Rect(r.x + 2, r.y + 2, r.width - 4, r.height - 4), new Color(0.1f, 0.13f, 0.19f));
+            Fill(new Rect(r.x + 2, r.yMax - 6, r.width - 4, 4), new Color(0.05f, 0.065f, 0.1f));
+            GUI.Label(new Rect(r.x, r.y - 2, r.width, r.height), key, Style(_bold, key.Length > 1 ? 13 : 16, TextAnchor.MiddleCenter));
         }
 
         void DrawChecklist()
         {
             var rep = _calc.Report;
-            bool[] done =
-            {
-                StationProgress.BoardChecked, _calc.SelectedParts.Count > 0, StationProgress.HologramInspected, rep.MissionReady, StationProgress.Launched
-            };
-            string[] items =
-            {
-                "Check the Mission Briefing Board", "Configure the spacecraft at the CAD Monitor", "Inspect the 3D satellite on the Hologram Table",
-                "Resolve engineering warnings (budget / mass / power)", "Pull the Launch Lever at the window console!"
-            };
-            int current = Array.IndexOf(done, false);
-            var r = new Rect(24, 24, 500, 66 + items.Length * 30);
+            _done[0] = StationProgress.BoardChecked; _done[1] = _calc.SelectedParts.Count > 0; _done[2] = StationProgress.HologramInspected;
+            _done[3] = rep.MissionReady; _done[4] = StationProgress.Launched;
+            int current = Array.IndexOf(_done, false), count = 0;
+            for (int i = 0; i < _done.Length; i++) if (_done[i]) count++;
+
+            var r = new Rect(24, 24, 500, 76 + ChecklistItems.Length * 30);
             Fill(r, Ink);
             Fill(new Rect(r.x, r.y, r.width, 3), StationKit.Cyan);
             GUI.Label(new Rect(r.x + 16, r.y + 10, r.width - 32, 22), Col("FLIGHT DIRECTOR CHECKLIST", StationKit.Cyan), Style(_bold, 15, TextAnchor.MiddleLeft));
+            GUI.Label(new Rect(r.x + 16, r.y + 10, r.width - 32, 22), Col($"{count} / {_done.Length}", count == _done.Length ? StationKit.Green : Color.white), Style(_bold, 15, TextAnchor.MiddleRight));
             GUI.Label(new Rect(r.x + 16, r.y + 32, r.width - 32, 20), Col("MISSION  ", Dim) + Col(_calc.CurrentScenario.Title.ToUpperInvariant(), StationKit.Amber), Style(_bold, 12, TextAnchor.MiddleLeft));
-            for (int i = 0; i < items.Length; i++)
+
+            // progress bar: one segment per step
+            float bx = r.x + 16, bw = r.width - 32, seg = (bw - (_done.Length - 1) * 4f) / _done.Length;
+            for (int i = 0; i < _done.Length; i++)
+                Fill(new Rect(bx + i * (seg + 4f), r.y + 57, seg, 5),
+                    _done[i] ? StationKit.Green : i == current ? new Color(StationKit.Amber.r, StationKit.Amber.g, StationKit.Amber.b, 0.55f + 0.35f * Mathf.Sin(Time.unscaledTime * 4f)) : new Color(0.14f, 0.18f, 0.25f));
+
+            for (int i = 0; i < ChecklistItems.Length; i++)
             {
-                float y = r.y + 60 + i * 30;
-                Color c = done[i] ? StationKit.Green : i == current ? Color.white : Dim;
+                float y = r.y + 70 + i * 30;
+                Color c = _done[i] ? StationKit.Green : i == current ? Color.white : Dim;
                 var box = new Rect(r.x + 16, y + 4, 18, 18);
-                Fill(box, done[i] ? StationKit.Green : new Color(0.14f, 0.18f, 0.25f));
-                if (!done[i]) Fill(new Rect(box.x + 2, box.y + 2, 14, 14), new Color(0.03f, 0.04f, 0.07f));
+                Fill(box, _done[i] ? StationKit.Green : new Color(0.14f, 0.18f, 0.25f));
+                if (!_done[i]) Fill(new Rect(box.x + 2, box.y + 2, 14, 14), new Color(0.03f, 0.04f, 0.07f));
+                else
+                {
+                    // check mark from two bars
+                    Fill(new Rect(box.x + 4, box.y + 9, 4, 5), Ink);
+                    Fill(new Rect(box.x + 8, box.y + 4, 6, 3), Ink);
+                    Fill(new Rect(box.x + 7, box.y + 7, 3, 7), Ink);
+                }
                 if (i == current) Fill(new Rect(r.x, y + 2, 4, 22), StationKit.Amber);
-                GUI.Label(new Rect(r.x + 44, y, r.width - 56, 26), Col($"{i + 1}. {items[i]}", c), Style(i == current ? _bold : _label, 14, TextAnchor.MiddleLeft));
+                GUI.Label(new Rect(r.x + 44, y, r.width - 56, 26), Col(ChecklistItems[i], c), Style(i == current ? _bold : _label, 14, TextAnchor.MiddleLeft));
             }
             if (_station != null && _station.Status == StationStatus.Warning && _station.ConstraintWarnings.Count > 0)
             {
@@ -232,17 +324,42 @@ namespace PhaseX.UI
             }
         }
 
+        static readonly string[] ChecklistItems =
+        {
+            "1. Check the Mission Briefing Board", "2. Configure the spacecraft at the CAD Monitor", "3. Inspect the 3D satellite on the Hologram Table",
+            "4. Resolve engineering warnings (budget / mass / power)", "5. Pull the Launch Lever at the window console!"
+        };
+        readonly bool[] _done = new bool[5];
+
+        /// <summary>Engineer rank box: rank title, XP, a progress bar to the next rank, badges, missions and stars.</summary>
         void DrawXp()
         {
-            var r = new Rect(W - 24 - 340, 24, 340, 96);
+            var r = new Rect(W - 24 - 380, 24, 380, 142);
             Fill(r, Ink);
             Fill(new Rect(r.x, r.y, r.width, 3), StationKit.Amber);
-            GUI.Label(new Rect(r.x + 16, r.y + 10, r.width - 32, 22), Col(StationProgress.Rank, StationKit.Amber), Style(_bold, 15, TextAnchor.MiddleLeft));
-            GUI.Label(new Rect(r.x + 16, r.y + 10, r.width - 32, 22), Col($"{StationProgress.Xp} XP", Color.white), Style(_bold, 15, TextAnchor.MiddleRight));
-            GUI.Label(new Rect(r.x + 16, r.y + 38, r.width - 32, 20),
+            float x = r.x + 16, w = r.width - 32;
+            GUI.Label(new Rect(x, r.y + 10, w, 22), Col(StationProgress.Rank, StationKit.Amber), Style(_bold, 16, TextAnchor.MiddleLeft));
+            GUI.Label(new Rect(x, r.y + 10, w, 22), Col($"{StationProgress.Xp} XP", Color.white), Style(_bold, 16, TextAnchor.MiddleRight));
+
+            var bar = new Rect(x, r.y + 38, w, 8);
+            Fill(bar, new Color(0.11f, 0.15f, 0.22f));
+            float fill = bar.width * Mathf.Clamp01(_xpBar);
+            Fill(new Rect(bar.x, bar.y, fill, bar.height), StationKit.Amber);
+            Fill(new Rect(bar.x, bar.y, fill, 2), new Color(1f, 1f, 1f, 0.3f));
+            string next = StationProgress.NextRank;
+            GUI.Label(new Rect(x, r.y + 49, w, 18),
+                next != null ? Col("NEXT RANK  ", Dim) + Col(next, StationKit.TextC) + Col($"  at {StationProgress.NextRankXp} XP", Dim)
+                             : Col("TOP RANK ACHIEVED", StationKit.Green),
+                Style(_bold, 11, TextAnchor.MiddleLeft));
+
+            Fill(new Rect(x, r.y + 72, w, 1), new Color(0.16f, 0.24f, 0.32f));
+            var scenarios = PhaseXDatabase.Scenarios;
+            GUI.Label(new Rect(x, r.y + 78, w, 20),
                 Col("NASA TRIVIA BADGES  ", Dim) + Col($"{StationProgress.Badges.Count} / {StationKnowledge.Pods.Length}", StationKit.TextC), Style(_bold, 12, TextAnchor.MiddleLeft));
-            GUI.Label(new Rect(r.x + 16, r.y + 60, r.width - 32, 20),
+            GUI.Label(new Rect(x, r.y + 98, w, 20),
                 Col("MISSIONS FLOWN  ", Dim) + Col(StationProgress.MissionsFlown.ToString(), StationKit.TextC), Style(_bold, 12, TextAnchor.MiddleLeft));
+            GUI.Label(new Rect(x, r.y + 118, w, 20),
+                Col("MISSION STARS  ", Dim) + Col($"{StationProgress.Star} {StationProgress.TotalStars(scenarios)} / {scenarios.Count * 3}", new Color(1f, 0.8f, 0.25f)), Style(_bold, 12, TextAnchor.MiddleLeft));
         }
 
         void DrawXRayCaption()
@@ -321,11 +438,19 @@ namespace PhaseX.UI
 
         void Shadowed(Rect r, string richText, GUIStyle style)
         {
-            GUI.Label(new Rect(r.x + 2, r.y + 2, r.width, r.height), "<color=#000000CC>" + StripColors(richText) + "</color>", style);
+            GUI.Label(new Rect(r.x + 2, r.y + 2, r.width, r.height), StripColors(richText), style);
             GUI.Label(r, richText, style);
         }
 
-        static string StripColors(string s) => System.Text.RegularExpressions.Regex.Replace(s, "</?color[^>]*>", "");
+        /// <summary>The text without colour tags, for the drop shadow. Cached: the same few lines are drawn every frame.</summary>
+        string StripColors(string s)
+        {
+            if (_stripped.TryGetValue(s, out var plain)) return plain;
+            if (_stripped.Count > 96) _stripped.Clear();
+            plain = "<color=#000000CC>" + System.Text.RegularExpressions.Regex.Replace(s, "</?color[^>]*>", "") + "</color>";
+            _stripped[s] = plain;
+            return plain;
+        }
 
         static void Fill(Rect r, Color c)
         {
@@ -339,7 +464,7 @@ namespace PhaseX.UI
 
         GUIStyle Style(GUIStyle baseStyle, int size, TextAnchor align)
         {
-            string key = baseStyle.name + size + align;
+            var key = (baseStyle, size, align);
             if (_cache.TryGetValue(key, out var s)) return s;
             s = new GUIStyle(baseStyle) { fontSize = size, alignment = align };
             _cache[key] = s;

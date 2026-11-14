@@ -236,10 +236,18 @@ way out of the flight screens, which stays true until the flight and all its cri
 
 ### Pause
 
-`PauseMenuController` (ESC while walking or during the countdown) sets `Time.timeScale = 0`, pauses audio and frees the
-cursor; `IsPaused` freezes the player and the interaction ray. It owns the mouse-sensitivity setting (PlayerPrefs key
-`PhaseX_MouseSensitivity`, a 0.1x–10x multiplier on `PhaseXPlayerController.DegreesPerPixel`). On resume it calls
-`GameViewModeManager.ApplyCursorForMode()`.
+`PauseMenuController` (ESC while walking or during the countdown) sets `Time.timeScale = 0`, pauses world audio and frees
+the cursor; `IsPaused` freezes the player and the interaction ray. On resume it calls
+`GameViewModeManager.ApplyCursorForMode()`. The 860 × 540 window holds:
+
+- **Mouse sensitivity** — PlayerPrefs `PhaseX_MouseSensitivity`, a 0.1x–10x multiplier on `PhaseXPlayerController.DegreesPerPixel`.
+- **Master volume** — PlayerPrefs `PhaseX_MasterVolume` (0–100 %, default 60 %), bound live to `StationAudio.Volume`.
+- **RESUME MISSION [ESC]** and **QUIT GAME** (`QuitGame()`: saves PlayerPrefs, undoes the pause, then stops Play mode
+  in the editor or calls `Application.Quit()` in a build; a web build only shows a "close the tab" toast).
+
+The menu ends its `OnGUI` by using every mouse and scroll event, so nothing underneath can be clicked. ESC is
+debounced twice: the menu only opens if pausing was already possible on the previous frame, and any screen that
+consumes ESC calls `PauseMenuController.NoteEscapeUsed()` for that frame.
 
 ## 5. How the existing GUI is embedded
 
@@ -279,8 +287,9 @@ A design that is not ready still gets the workstation's own root-cause report wh
 
 - `StationKit` — primitives, glow materials, 3D text with Unity's built-in font. That font shader ignores depth, so
   `MissionControlStation.CullLabels()` hides any label that faces away or has a collider in its line of sight.
-- `StationAudio` — synthesized clips (footsteps, blip, buzzer, countdown, rumble). No audio files.
-- `StationProgress` — checklist flags per mission, Engineer XP, badges, missions flown.
+- `StationAudio` — every sound is synthesized (section 10). No audio files.
+- `StationProgress` — checklist flags per mission (session), plus saved progress: Engineer XP, missions flown,
+  badges, and the best score and stars of every mission (section 10).
 - `StationKnowledge` — mission backgrounds, pod articles, and the Flight Director's wording for each warning.
 - `StationHUD` — the five-step **Flight Director Checklist**, XP box, panels, X-ray caption, countdown, toasts, fades.
 
@@ -297,3 +306,96 @@ goes back to building the room at Play time. Both are optional: pressing Play in
 - **New knowledge pod:** add an entry to `StationKnowledge.Pods` and a spot in `StationBuilder`.
 - **New part visual on the hologram:** add the module to `ProceduralSpacecraftView.BuildSpacecraft()`; the table
   clones it automatically.
+- **New sound:** add a `Clip(name, seconds, synth)` method to `StationAudio` and call it from the system that owns
+  the event.
+
+## 10. Phase 5 — Master Polish
+
+### 10a. Audio — `StationAudio`
+
+Still zero-asset: each clip is a `float[]` filled by a small synth function (sines, phase-continuous sweeps, plucked
+tones, filtered noise) and cached on first use. Clips get a 2.5 ms fade at both ends so none of them clicks.
+
+| Call | Sound | Fired from |
+|---|---|---|
+| `Blip()` | rising UI tick | interaction ray, tab / scenario / camera / time-warp switches, pause, volume slider |
+| `PartAttach()` / `PartRemove()` | two-tone latch + rising chirp / descending release | `MissionCalculator.TogglePart()`, `ClearDesign()` |
+| `TerminalEnter()` / `TerminalExit()` | console power-up / power-down sweep | `GameViewModeManager.EnterMonitorMode()` / `ExitMonitorMode()` |
+| `XRayPulse()` | harmonic sonar ping with an echo | `HologramAssemblyTable.Interact()` |
+| `CrisisKlaxon()` | two-tone Red Alert siren | `CrisisEventManager.Trigger()` |
+| `Chime()` / `Buzzer()` | good / bad outcome | crisis decision (`Choose()`), badges, mission accepted, rejected launch, locked part |
+| `BurnIgnition()` | low-pass filtered engine burn | `TrajectorySimulator.StepTo()` on a segment whose label is a BURN or DESCENT |
+| `MissionSuccessFanfare()` | C-major arpeggio | `TrajectorySimulator` when the flight completes |
+| `CountBeep()`, `Liftoff()`, `Footstep()` | as before | launch sequence, player |
+
+Three `AudioSource`s live on one `DontDestroyOnLoad` object:
+
+- **world** — countdown, rumble, footsteps. Stops with `AudioListener.pause`.
+- **UI** — `ignoreListenerPause = true`, so the pause menu's own buttons and volume slider are audible.
+- **ambience** — a seamless 4-second control-room hum (every partial is a multiple of 0.25 Hz; the hiss is
+  cross-faded into itself). `GameViewModeManager.UpdateAmbience()` sets its level every frame on unscaled time:
+  1.0 walking or in a panel, 0.45 at the monitor, 0.35 under the countdown, 0 in flight. The source is stopped
+  while inaudible or while `Volume == 0`, and the loop is never even generated if the game starts muted.
+
+`StationAudio.Volume` is the master volume: loaded lazily from PlayerPrefs, written back by its setter.
+
+### 10b. Saved progress — `StationProgress`
+
+| PlayerPrefs key | Content |
+|---|---|
+| `PhaseX_EngineerXP`, `PhaseX_MissionsFlown` | totals |
+| `PhaseX_Badges` | earned badge names joined with `|` |
+| `PhaseX_BestScore_<scenario.Id>`, `PhaseX_BestStars_<scenario.Id>` | mission record (0–100, 0–3) |
+
+Everything loads on first use, so the class needs no boot call and survives "Reload Domain off".
+
+- **Who writes the record:** `PhaseXRuntimeUI.TrackFlightResult()` — once per launch, when the flight is complete and
+  every crisis is answered. It runs even while the workstation is hidden, and in the flat (no-station) mode too.
+  Score and stars are each kept at their best value; `RecordResult` returns true on an improvement ("NEW PERSONAL BEST").
+- **Who writes XP:** `GameViewModeManager.ReturnFromFlight()` through `RecordFlight(xp)`; pods through `AwardBadge`.
+- **Where stars show:** mission buttons in the workstation header, the viewport's "MISSION BEST" line, the engineering
+  report, the 3D briefing board (wall text and panel), the rank box on the station HUD, and the success toast.
+- **Star glyphs:** `StarText()` / `EarnedStars()` use ★ ☆ only if the built-in font reports both glyphs
+  (`Font.HasCharacter`), otherwise `*` and `-`, so no platform shows empty boxes.
+- **Ranks:** Cadet Engineer (0 XP) → Systems Specialist (150) → Flight Director (400) → Chief NASA Architect (800).
+
+### 10c. Visual detail and how it stays scene-compatible
+
+New geometry follows one rule: **built by an idempotent `Ensure…` method that both the builder and `Start()` call**,
+or built only in `Start()`. Either way a station saved in a scene before Phase 5 plays exactly like a fresh one.
+
+| What | Where | Built |
+|---|---|---|
+| Module surface detail: corner brackets, star tracker, MLI blankets, LEDs, cell grids, hinges, yoke truss, RTG heat cores, feed lines, pressurant spheres, nozzle rims, coated lens rings, dish struts | `ProceduralSpacecraftView.BuildSurfaceDetail()` | with the modules, so hologram and flight clones inherit it |
+| Spring pop-in (0.05 → 1.0, ease-out-back, 0.42 s) | `ProceduralSpacecraftView.StartPop()` / `AnimatePops()` | — |
+| Flood beams, rim-light tower, tower bracing, umbilical arms, pad edge lights, horizon glow | `StationBuilder.EnsureExteriorDetail()` (child `Exterior/Phase5Detail`) | builder + `MissionControlStation.Start()` |
+| Extra star dome and Milky Way band | `StationBuilder.EnsureSkyStars()` | Play time only (particles are not saved in scenes) |
+| Gold visor, visor frame, chest telemetry patch, backpack status light, hoses, antenna | `StationBuilder.EnsureAstronautDetail()` (child `AstronautBody/SuitDetail`) | builder + `PhaseXPlayerController.Start()` |
+| Calibration ring, X-ray laser scan lines, highlight rim round the inspected part | `HologramAssemblyTable.EnsureEffects()` / `BuildRim()` | Play time only |
+
+Only one new real light was added outside (a cool rim light): the rocket has to stay inside URP's per-object light
+limit together with the two floodlights and the engine flame. The other tower has a lamp and a beam but no `Light`.
+
+Animated materials (status LEDs, RTG glow, backpack light, scan lines) are private instances created in `Start()` or
+at build time and destroyed in `OnDestroy()`.
+
+### 10d. UI and HUD
+
+- **Workstation:** the six gauge fills glide to their values (`Mathf.Lerp`, `unscaledDeltaTime × 10`, stepped once
+  per frame on Repaint, NaN-guarded). Part cards show colour-coded stat chips (`$M`, `kg`, `W`, `Mbps`, `m/s`, `Sci`)
+  and a pulsing **★ MISSION FIT** badge for parts in `RecommendedPayloadIds` or `AllowedOrbitIds`.
+- **Station HUD:** a four-corner reticle closes in on an `IInteractable`; prompts are split into a keycap badge and
+  the action text; keycap hints for `[V]` and `[ESC]` sit in the bottom corners; the checklist has a segmented
+  progress bar; the rank box has an XP bar to the next rank.
+
+### 10e. Stability rules introduced here
+
+| Rule | How it is enforced |
+|---|---|
+| ESC never does two things | `PauseMenuController.NoteEscapeUsed()` + the previous-frame eligibility check (section 4) |
+| A key that returns to the room does not also act on the room | `GameViewModeManager.FreeRoamSinceFrame`; `PlayerInteractionSystem` ignores `[E]` on that frame |
+| No allocation of textures or materials in `OnGUI` / `Update` | all GUI textures are made in `EnsureStyles()` and destroyed in `OnDestroy()`; glow materials likewise |
+| Less per-frame garbage in OnGUI | style cache keyed by a value tuple (no string building), cached part list, card heights, chip strings, stripped shadow text |
+| Labels never dangle | `MissionControlStation.RefreshLabels()` re-collects the 3D labels at start, every 2 s, and at once when a destroyed one is seen |
+| Paused time is safe | UI animation uses unscaled time; the camera tween adds `deltaTime / duration` only when `deltaTime > 0` |
+| Statics reset | every static, including `CursorLockRequested` and the audio sources, resets in `SubsystemRegistration` |

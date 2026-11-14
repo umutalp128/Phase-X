@@ -68,7 +68,17 @@ namespace PhaseX.Player
         float _flightScore, _flightWait;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-        static void ResetStatics() => Instance = null;
+        static void ResetStatics()
+        {
+            Instance = null;
+            CursorLockRequested = false;
+        }
+
+        /// <summary>
+        /// Frame on which the game last dropped back into free roam (panel closed, monitor left, flight over).
+        /// The key press that caused it must not also act on the room in that same frame.
+        /// </summary>
+        public int FreeRoamSinceFrame { get; private set; } = -1;
 
         public void Init(MissionCalculator calc, ProceduralSpacecraftView view, TrajectorySimulator sim,
             MissionControlStation station, PhaseXPlayerController player, StationHUD hud)
@@ -146,6 +156,7 @@ namespace PhaseX.Player
             if (Mode != GameViewMode.FreeRoam3D || InTransition || cameraFocusPoint == null) return;
             Mode = GameViewMode.MonitorTerminalGUI;
             TerminalLive = false;
+            StationAudio.TerminalEnter();
             _focus = cameraFocusPoint;
             _player.ControlEnabled = false;
             SetCursorLocked(false);
@@ -166,6 +177,8 @@ namespace PhaseX.Player
             if (BlockedByLaunchLock()) return;
             if (Mode != GameViewMode.MonitorTerminalGUI || !TerminalLive || InTransition) return;
             TerminalLive = false;
+            PauseMenuController.NoteEscapeUsed();     // the ESC that leaves the monitor never opens the pause menu
+            StationAudio.TerminalExit();
             PhaseXRuntimeUI.Hidden = true;
             _view.SetDesignVisible(false);
             _station.gameObject.SetActive(true);
@@ -174,6 +187,7 @@ namespace PhaseX.Player
             StartTween(Vector3.zero, Quaternion.identity, RoamFov, 0.6f, true, () =>
             {
                 Mode = GameViewMode.FreeRoam3D;
+                FreeRoamSinceFrame = Time.frameCount;
                 _player.ControlEnabled = true;
                 SetCursorLocked(true);
             });
@@ -205,6 +219,8 @@ namespace PhaseX.Player
         {
             if (Mode != GameViewMode.StationPanel) return;
             Mode = GameViewMode.FreeRoam3D;
+            FreeRoamSinceFrame = Time.frameCount;
+            PauseMenuController.NoteEscapeUsed();
             _player.ControlEnabled = true;
             SetCursorLocked(true);
         }
@@ -316,6 +332,8 @@ namespace PhaseX.Player
             _station.gameObject.SetActive(true);
             if (_station.console != null) _station.console.ResetPad();
             Mode = GameViewMode.FreeRoam3D;
+            FreeRoamSinceFrame = Time.frameCount;
+            PauseMenuController.NoteEscapeUsed();
             _player.ControlEnabled = true;
             SetCursorLocked(true);
             if (_cam != null) _cam.fieldOfView = RoamFov;
@@ -324,9 +342,12 @@ namespace PhaseX.Player
             if (_flightCompleted)
             {
                 int xp = Mathf.RoundToInt(_flightScore);
-                StationProgress.MissionsFlown++;
-                StationProgress.AddXp(xp);
-                _hud.Toast($"MISSION SUCCESS!  Final score {_flightScore:0} / 100   +{xp} Engineer XP", new Color(0.3f, 0.9f, 0.5f));
+                int stars = MissionCalculator.StarsFor(_flightScore);
+                string rankBefore = StationProgress.Rank;
+                StationProgress.RecordFlight(xp);
+                // best score and stars were already saved by the workstation when the flight finished
+                string promoted = StationProgress.Rank != rankBefore ? $"   PROMOTED: {StationProgress.Rank}" : "";
+                _hud.Toast($"MISSION SUCCESS!  {StationProgress.StarText(stars)}  Final score {_flightScore:0} / 100   +{xp} Engineer XP{promoted}", new Color(0.3f, 0.9f, 0.5f), 8f);
             }
             else if (_flightSeen) _hud.Toast("Flight ended early. Review the design and try again.", new Color(1f, 0.68f, 0.18f));
         }
@@ -335,6 +356,7 @@ namespace PhaseX.Player
 
         void Update()
         {
+            UpdateAmbience();
             switch (Mode)
             {
                 case GameViewMode.FreeRoam3D:
@@ -352,6 +374,22 @@ namespace PhaseX.Player
                     if (FlightPhase) TrackFlight();
                     break;
             }
+        }
+
+        /// <summary>
+        /// Control-room hum: full while walking the station or reading a panel, ducked at the monitor and under the
+        /// countdown, silent in flight. Runs on unscaled time so the fade never stalls.
+        /// </summary>
+        void UpdateAmbience()
+        {
+            float level;
+            switch (Mode)
+            {
+                case GameViewMode.MonitorTerminalGUI: level = 0.45f; break;
+                case GameViewMode.LaunchSequenceCinematic: level = FlightPhase ? 0f : 0.35f; break;
+                default: level = 1f; break;
+            }
+            StationAudio.UpdateAmbience(level, Time.unscaledDeltaTime);
         }
 
         void StartTween(Vector3 pos, Quaternion rot, float fov, float duration, bool toPlayer, Action done)
@@ -374,7 +412,9 @@ namespace PhaseX.Player
 
             if (_tweenT >= 0f)
             {
-                _tweenT += Time.deltaTime / _tweenDur;
+                // deltaTime is 0 while the game is paused: the tween simply holds its pose (never 0 / 0)
+                float dt = Time.deltaTime;
+                if (dt > 0f && _tweenDur > 0f) _tweenT += dt / _tweenDur;
                 if (_tweenToPlayer) _player.GetCameraPose(out _toPos, out _toRot);
                 float k = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(_tweenT));
                 _cam.transform.SetPositionAndRotation(Vector3.Lerp(_fromPos, _toPos, k), Quaternion.Slerp(_fromRot, _toRot, k));

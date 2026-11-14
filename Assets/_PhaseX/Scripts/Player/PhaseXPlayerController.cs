@@ -36,6 +36,7 @@ namespace PhaseX.Player
 
         CharacterController _cc;
         float _vy, _bobPhase, _bobAmount;
+        Material _statusLightMat;
         int _lastStep;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
@@ -52,11 +53,24 @@ namespace PhaseX.Player
 
         void Start()
         {
-            if (body != null) body.SetActive(ThirdPerson);
+            if (body != null)
+            {
+                // Phase 5 suit detail: the builder adds it, and a player saved in a scene earlier gets it here.
+                StationBuilder.EnsureAstronautDetail(body);
+                var light = body.transform.Find("SuitDetail/BackpackStatusLight");
+                var r = light != null ? light.GetComponent<Renderer>() : null;
+                if (r != null)
+                {
+                    _statusLightMat = StationKit.Glow(StationKit.Cyan, 2.5f);
+                    r.sharedMaterial = _statusLightMat;
+                }
+                body.SetActive(ThirdPerson);
+            }
         }
 
         void OnDestroy()
         {
+            StationKit.Kill(_statusLightMat);
             if (Instance == this) Instance = null;
         }
 
@@ -75,6 +89,13 @@ namespace PhaseX.Player
 
         void Update()
         {
+            // backpack status light: the mission state colour, pulsing (only visible in third person)
+            if (_statusLightMat != null && ThirdPerson)
+            {
+                var st = MissionControlStation.Instance;
+                StationKit.SetGlow(_statusLightMat, st != null ? st.StatusColor : StationKit.Cyan, 2.2f + 1.2f * Mathf.Sin(Time.unscaledTime * 3f));
+            }
+
             // Paused: no look, no movement, no camera toggle (the mouse is on the pause menu's slider).
             if (PhaseX.UI.PauseMenuController.IsPaused) return;
 

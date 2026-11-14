@@ -23,6 +23,8 @@ namespace PhaseX.Station
             if (screen != null) screen.sharedMaterial = _screenMat;
         }
 
+        void OnDestroy() => StationKit.Kill(_screenMat);
+
         public string GetInteractionPrompt() => "[E] Use Spacecraft CAD Terminal";
 
         public void Interact(PhaseXPlayerController player)

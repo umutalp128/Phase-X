@@ -85,11 +85,16 @@ public class MissionCalculator : MonoBehaviour
     public bool TogglePart(SpacecraftPart p)
     {
         if (!IsUnlocked(p)) return false;
-        if (_selected.Contains(p)) _selected.Remove(p);
+        if (_selected.Contains(p))
+        {
+            _selected.Remove(p);
+            PhaseX.Station.StationAudio.PartRemove();
+        }
         else
         {
             if (IsSingleSlot(p.Category)) _selected.RemoveAll(x => x.Category == p.Category);
             _selected.Add(p);
+            PhaseX.Station.StationAudio.PartAttach();
         }
         if (Phase == CmlPhase.Cml1Concept || Phase == CmlPhase.Cml4LunarOps) Phase = CmlPhase.Cml2TradeStudies;
         Recalculate();
@@ -99,6 +104,7 @@ public class MissionCalculator : MonoBehaviour
 
     public void ClearDesign()
     {
+        if (_selected.Count > 0) PhaseX.Station.StationAudio.PartRemove();
         _selected.Clear();
         Recalculate();
         OnDesignChanged?.Invoke();

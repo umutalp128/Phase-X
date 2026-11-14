@@ -377,6 +377,53 @@ The editor always has every shader, which is why Play mode looked fine.
 - The player log still warns that three URP post-processing shaders (two depth-of-field, Panini projection) are stripped.
   The game does not use those effects.
 
+## Phase 5 — Master Polish: Quit Button, Audio, 3D Detail, HUD, Mission Stars, Bug Fixes ✅
+
+Architecture notes are in `ARCHITECTURE.md` section 10.
+
+### Pause menu
+- **QUIT GAME** button (red-bordered) next to **RESUME MISSION [ESC]**. It saves PlayerPrefs, undoes the pause and
+  leaves the game (stops Play mode in the editor).
+- **MASTER VOLUME** slider (0–100 %, default 60 %), live, saved as `PhaseX_MasterVolume`.
+- The menu swallows all mouse and scroll events, so nothing under it can be clicked.
+
+### Audio (all synthesized, still no audio files)
+- New clips: part latch + chirp, part release, terminal power-up / power-down, X-ray sonar ping, Red Alert klaxon,
+  engine burn (TLI, LOI, powered descent), success fanfare. The blip and chime were re-voiced.
+- A looping control-room hum plays in the station, ducks at the monitor and the countdown, and is silent in flight
+  and at 0 % volume.
+- UI ticks on tab, scenario, camera and time-warp switches; chime or buzzer on every crisis decision.
+
+### 3D
+- Every spacecraft module has more surface detail, and newly installed modules spring into place.
+- Launch pad: floodlight beams, a rim-light tower, tower bracing, umbilical arms and hoses, pad edge lights, a
+  horizon glow, and a denser night sky with a Milky Way band.
+- Hologram table: counter-rotating calibration ring; in X-Ray mode, sweeping laser lines and an amber double ring
+  around the inspected component.
+- Astronaut: gold visor, chest telemetry patch, backpack status light that follows the mission state.
+
+### UI, HUD and progression
+- Best score and best stars per mission, Engineer XP, missions flown and badges are saved between sessions.
+- Stars appear on the mission buttons, in the CAD viewport, in the engineering report ("NEW PERSONAL BEST!"), on the
+  3D briefing board and in the rank box.
+- Telemetry gauges glide instead of jumping. Part cards have colour-coded stat chips and a **★ MISSION FIT** badge.
+- Station HUD: corner-bracket reticle, keycap badges, segmented checklist progress, XP bar to the next rank.
+- New ranks: Cadet Engineer → Systems Specialist (150 XP) → Flight Director (400) → Chief NASA Architect (800).
+
+### Bugs fixed and hardening
+- `[E]` that closes a panel could re-open it in the same frame, depending on script order. Fixed with a frame stamp.
+- ESC that closes a window, a panel or the monitor can no longer open the pause menu on the same press (second guard).
+- Label culling re-collects its labels, so labels created or destroyed after start are handled.
+- Glow materials made in `Start()` were never destroyed (station, monitor, console, pods, hologram). They are now.
+  The shared particle dot texture was created once per caller; it is now created once.
+- `OnGUI` no longer builds a string for every style lookup or runs a regex for every shadowed label.
+- `GameViewModeManager.CursorLockRequested` was not reset between Play sessions with domain reload off.
+
+### Behaviour changes worth knowing
+- **XP now persists**, so the old rank names and thresholds were replaced (see above). A fresh install starts at 0 XP.
+- Badges are awarded once ever, not once per session.
+- The interaction prompt and the toast were re-laid out; the toast is narrower so it no longer overlaps the checklist.
+
 ### Next phases (planned)
 - (On hold) Phase 4: 4-player co-op role ownership and segment sign-off; campaign unlocks; save progress.
 - (On hold) Phase 5: polish, audio, accessibility, standalone builds, demo script.

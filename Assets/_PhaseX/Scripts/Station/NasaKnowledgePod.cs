@@ -28,6 +28,8 @@ namespace PhaseX.Station
             if (glow != null) glow.sharedMaterial = _mat;
         }
 
+        void OnDestroy() => StationKit.Kill(_mat);
+
         public string GetInteractionPrompt() => Read ? $"[E] Read NASA Data Pod: {title}" : $"[E] Read NASA Data Pod: {title}  (+{XpReward} XP)";
 
         public void Interact(PhaseXPlayerController player)

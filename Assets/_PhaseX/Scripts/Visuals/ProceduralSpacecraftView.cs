@@ -17,6 +17,12 @@ public class ProceduralSpacecraftView : MonoBehaviour
     readonly Dictionary<string, GameObject> _modules = new Dictionary<string, GameObject>();
     GameObject _frame;
 
+    // Phase 5: animated detail materials (owned here) and the spring pop-in of newly installed modules
+    Material _ledA, _ledB, _rtgGlow;
+    struct Pop { public Transform T; public float K; }
+    readonly List<Pop> _pops = new List<Pop>();
+    const float PopSeconds = 0.42f, PopStartScale = 0.05f;
+
     Transform _earth, _moon, _orbitMarker, _backdrop;
     bool _designVisible = true;
     LineRenderer _orbitLine;
@@ -76,6 +82,9 @@ public class ProceduralSpacecraftView : MonoBehaviour
             calc.OnDesignChanged -= Refresh;
             calc.OnLaunched -= OnLaunched;
         }
+        if (_ledA != null) Destroy(_ledA);
+        if (_ledB != null) Destroy(_ledB);
+        if (_rtgGlow != null) Destroy(_rtgGlow);
         if (Instance == this) Instance = null;
     }
 
@@ -364,7 +373,177 @@ public class ProceduralSpacecraftView : MonoBehaviour
         Prim(PrimitiveType.Cylinder, dish, new Vector3(0, 1.6f, 0), new Vector3(0.05f, 1.3f, 0.05f), Vector3.zero, PhaseXMaterials.Lit(Dark, 0.5f, 0.6f));
         Prim(PrimitiveType.Sphere, dish, new Vector3(0, 2.9f, 0), new Vector3(0.12f, 0.6f, 0.12f), Vector3.zero, PhaseXMaterials.Lit(Gold, 0.7f, 0.9f));
 
+        BuildSurfaceDetail(cube, espa, body, array, rtg, cold, bi, cam, sb, xb, dish);
+
         foreach (var m in _modules.Values) m.SetActive(false);
+    }
+
+    // ------------------------------------------------------------------ Phase 5 surface detail
+
+    /// <summary>
+    /// Second pass over the modules: brackets, star trackers, MLI blankets and status LEDs on the buses, cell grids,
+    /// hinges and trusses on the solar hardware, glowing heat cores on the RTG, feed lines, pressurant spheres and
+    /// nozzle bells on the engines, coated lens rings and foil on the camera, feed-horn struts on the dish.
+    /// Everything is parented to its module, so the hologram table and the flight model clone it for free.
+    /// </summary>
+    void BuildSurfaceDetail(Transform cube, Transform espa, Transform body, Transform array, Transform rtg, Transform cold,
+        Transform bi, Transform cam, Transform sb, Transform xb, Transform dish)
+    {
+        var gold = PhaseXMaterials.Lit(Gold, 0.86f, 0.95f);
+        var quilt = PhaseXMaterials.Lit(GoldDark, 0.7f, 0.9f);
+        var alu = PhaseXMaterials.Lit(Alu, 0.65f, 0.85f);
+        var bright = PhaseXMaterials.Lit(new Color(0.82f, 0.84f, 0.88f), 0.88f, 1f);
+        var bracket = PhaseXMaterials.Lit(new Color(0.5f, 0.52f, 0.56f), 0.6f, 0.9f);
+        var dark = PhaseXMaterials.Lit(Dark, 0.55f, 0.7f);
+        var glass = PhaseXMaterials.Lit(new Color(0.02f, 0.03f, 0.08f), 0.96f, 0.3f);
+
+        // private, animated materials: blinking status LEDs and the RTG heat glow (see Update)
+        _ledA = PhaseX.Station.StationKit.Glow(new Color(0.3f, 1f, 0.5f), 2.5f);
+        _ledB = PhaseX.Station.StationKit.Glow(new Color(1f, 0.68f, 0.18f), 2.5f);
+        _rtgGlow = PhaseX.Station.StationKit.Glow(new Color(1f, 0.42f, 0.1f), 2.2f);
+
+        // ---- 6U CubeSat bus: corner brackets, gold MLI blankets with quilt seams
+        for (int sx = -1; sx <= 1; sx += 2)
+        for (int sy = -1; sy <= 1; sy += 2)
+        for (int sz = -1; sz <= 1; sz += 2)
+            Prim(PrimitiveType.Cube, cube, new Vector3(sx * 0.8f, sy * 0.9f, sz * 0.8f), Vector3.one * 0.2f, Vector3.zero, bracket);
+        for (int s = -1; s <= 1; s += 2)
+        {
+            Prim(PrimitiveType.Cube, cube, new Vector3(0, 0, s * 0.805f), new Vector3(1.36f, 1.56f, 0.02f), Vector3.zero, gold);
+            Prim(PrimitiveType.Cube, cube, new Vector3(0, s * 0.905f, 0), new Vector3(1.36f, 0.02f, 1.36f), Vector3.zero, gold);
+            for (int k = -1; k <= 1; k++)
+                Prim(PrimitiveType.Cube, cube, new Vector3(0, k * 0.42f, s * 0.812f), new Vector3(1.36f, 0.014f, 0.012f), Vector3.zero, quilt);
+            for (int k = -1; k <= 1; k += 2)
+                Prim(PrimitiveType.Cube, cube, new Vector3(k * 0.34f, 0, s * 0.812f), new Vector3(0.014f, 1.56f, 0.012f), Vector3.zero, quilt);
+        }
+        StarTracker(cube, bracket, dark, bright, glass);
+        Prim(PrimitiveType.Sphere, cube, new Vector3(0.62f, 0.76f, -0.822f), Vector3.one * 0.07f, Vector3.zero, _ledA);
+        Prim(PrimitiveType.Sphere, cube, new Vector3(0.62f, 0.64f, -0.822f), Vector3.one * 0.07f, Vector3.zero, _ledB);
+
+        // ---- ESPA SmallSat bus: blanket seams, mounting lugs on both decks
+        for (int k = 0; k < 8; k++)
+        {
+            float a = k * 45f * Mathf.Deg2Rad;
+            Prim(PrimitiveType.Cube, espa, new Vector3(Mathf.Cos(a) * 0.855f, 0, Mathf.Sin(a) * 0.855f), new Vector3(0.03f, 1.74f, 0.03f), new Vector3(0, -k * 45f, 0), quilt);
+        }
+        for (int k = 0; k < 4; k++)
+        for (int sy = -1; sy <= 1; sy += 2)
+        {
+            float a = (k * 90f + 45f) * Mathf.Deg2Rad;
+            Prim(PrimitiveType.Cube, espa, new Vector3(Mathf.Cos(a) * 0.88f, sy * 0.93f, Mathf.Sin(a) * 0.88f), new Vector3(0.24f, 0.1f, 0.24f), new Vector3(0, -(k * 90f + 45f), 0), bracket);
+        }
+        StarTracker(espa, bracket, dark, bright, glass);
+        Prim(PrimitiveType.Sphere, espa, new Vector3(0.3f, 0.965f, -0.68f), Vector3.one * 0.07f, Vector3.zero, _ledA);
+        Prim(PrimitiveType.Sphere, espa, new Vector3(0.42f, 0.965f, -0.6f), Vector3.one * 0.07f, Vector3.zero, _ledB);
+
+        // ---- body-mounted cells: cell grid cross-bars
+        for (int s = -1; s <= 1; s += 2)
+        {
+            float x = s * (R + 0.05f);
+            for (int k = -1; k <= 1; k++)
+            {
+                Prim(PrimitiveType.Cube, body, new Vector3(x, k * 0.325f, 0), new Vector3(0.012f, 0.02f, 1.1f), Vector3.zero, alu);
+                Prim(PrimitiveType.Cube, body, new Vector3(x, 0, k * 0.275f), new Vector3(0.012f, 1.3f, 0.02f), Vector3.zero, alu);
+            }
+        }
+
+        // ---- deployable wings: finer cell grid, deployment hinges, root yoke truss and a back spar
+        for (int s = -1; s <= 1; s += 2)
+        {
+            for (int i = 0; i < 3; i++)
+            {
+                float x = s * (R + 0.6f + 0.62f + i * 1.28f);
+                for (int k = -1; k <= 1; k += 2)
+                {
+                    Prim(PrimitiveType.Cube, array, new Vector3(x, 0.025f, k * 0.5f), new Vector3(1.24f, 0.02f, 0.025f), Vector3.zero, alu);
+                    Prim(PrimitiveType.Cube, array, new Vector3(x + k * 0.3f, 0.025f, 0), new Vector3(0.025f, 0.02f, 1.52f), Vector3.zero, alu);
+                }
+                float joint = s * (R + 0.6f + i * 1.28f);
+                for (int k = -1; k <= 1; k += 2)
+                    Prim(PrimitiveType.Cylinder, array, new Vector3(joint, 0, k * 0.5f), new Vector3(0.07f, 0.12f, 0.07f), new Vector3(90, 0, 0), bright);
+            }
+            for (int k = -1; k <= 1; k += 2)
+                Rod(array, new Vector3(s * (R + 0.3f), 0, 0), new Vector3(s * (R + 0.61f), 0, k * 0.6f), 0.03f, bright);
+            Prim(PrimitiveType.Cube, array, new Vector3(s * (R + 0.6f + 1.92f), -0.035f, 0), new Vector3(3.84f, 0.03f, 0.05f), Vector3.zero, alu);
+        }
+
+        // ---- RTG: glowing plutonium heat cores between the radiator fins (child of the scaled RTG body)
+        for (int k = 0; k < 8; k++)
+        {
+            float deg = 22.5f + k * 45f, a = deg * Mathf.Deg2Rad;
+            Prim(PrimitiveType.Cube, rtg, new Vector3(Mathf.Cos(a) * 0.52f, 0, Mathf.Sin(a) * 0.52f), new Vector3(0.05f, 1.5f, 0.16f), new Vector3(0, -deg, 0), _rtgGlow);
+        }
+        Prim(PrimitiveType.Cylinder, rtg, new Vector3(0, 1.02f, 0), new Vector3(0.6f, 0.03f, 0.6f), Vector3.zero, _rtgGlow);
+
+        // ---- cold gas: gold-wrapped pressurant sphere, a feed manifold between the nozzles, metal nozzle bells
+        var bottle = new Vector3(0.35f, -1.04f, -0.45f);
+        Prim(PrimitiveType.Sphere, cold, bottle, Vector3.one * 0.28f, Vector3.zero, gold);
+        Prim(PrimitiveType.Cylinder, cold, bottle, new Vector3(0.29f, 0.02f, 0.29f), Vector3.zero, quilt);
+        var corners = new[] { new Vector3(-0.6f, -0.965f, -0.6f), new Vector3(0.6f, -0.965f, -0.6f), new Vector3(0.6f, -0.965f, 0.6f), new Vector3(-0.6f, -0.965f, 0.6f) };
+        for (int i = 0; i < 4; i++)
+        {
+            Rod(cold, corners[i], corners[(i + 1) % 4], 0.025f, bright);
+            Prim(PrimitiveType.Cylinder, cold, new Vector3(corners[i].x, -1.045f, corners[i].z), new Vector3(0.165f, 0.03f, 0.165f), Vector3.zero, bright);
+        }
+        Rod(cold, bottle, new Vector3(0.35f, -0.965f, -0.6f), 0.025f, bright);
+
+        // ---- bipropellant: feed lines, gold-wrapped pressurant sphere, banded tanks, a bright nozzle rim
+        for (int s = -1; s <= 1; s += 2)
+        {
+            Rod(bi, new Vector3(s * 0.5f, -0.98f, 0.4f), new Vector3(s * 0.1f, -0.96f, 0.06f), 0.03f, bright);
+            Prim(PrimitiveType.Cylinder, bi, new Vector3(s * 0.55f, -1.15f, 0.45f), new Vector3(0.46f, 0.025f, 0.46f), Vector3.zero, gold);
+        }
+        var helium = new Vector3(-0.3f, -1.1f, -0.45f);
+        Prim(PrimitiveType.Sphere, bi, helium, Vector3.one * 0.32f, Vector3.zero, gold);
+        Prim(PrimitiveType.Cylinder, bi, helium, new Vector3(0.33f, 0.02f, 0.33f), Vector3.zero, quilt);
+        Rod(bi, helium, new Vector3(-0.08f, -0.98f, -0.1f), 0.028f, bright);
+        Prim(PrimitiveType.Cylinder, bi, new Vector3(0, -1.2f, 0), new Vector3(0.37f, 0.015f, 0.37f), Vector3.zero, gold);
+        Prim(PrimitiveType.Cylinder, bi, new Vector3(0, -1.665f, 0), new Vector3(0.76f, 0.012f, 0.76f), Vector3.zero, bright);
+
+        // ---- camera: gold mounting flange, a multi-coated lens ring and gold foil shielding around the barrel
+        Prim(PrimitiveType.Cylinder, cam, new Vector3(0.3f, 0.35f, -R - 0.396f), new Vector3(0.42f, 0.008f, 0.42f), new Vector3(90, 0, 0), gold);
+        Prim(PrimitiveType.Cylinder, cam, new Vector3(0.3f, 0.35f, -R - 0.404f), new Vector3(0.345f, 0.006f, 0.345f), new Vector3(90, 0, 0),
+            PhaseXMaterials.Lit(new Color(0.45f, 0.2f, 0.85f), 0.96f, 0.2f, new Color(0.5f, 0.12f, 1.1f)));
+        Prim(PrimitiveType.Cube, cam, new Vector3(0.3f, 0.35f, -R - 0.07f), new Vector3(0.5f, 0.48f, 0.12f), Vector3.zero, gold);
+
+        // ---- S-band: gold foil ground plane under the patch, whip base
+        Prim(PrimitiveType.Cube, sb, new Vector3(0.4f, 0.915f, 0.35f), new Vector3(0.48f, 0.02f, 0.48f), Vector3.zero, gold);
+        Prim(PrimitiveType.Cylinder, sb, new Vector3(0.55f, 0.94f, -0.5f), new Vector3(0.1f, 0.04f, 0.1f), Vector3.zero, bright);
+
+        // ---- X-band dish: three feed-horn struts from the rim to the horn, gold foil collar on the mast.
+        // The dish is a squashed sphere, so the struts are built in module space to stay round.
+        Vector3 dishPos = dish.localPosition, dishScale = dish.localScale;
+        Quaternion dishRot = dish.localRotation;
+        Vector3 D(Vector3 local) => dishPos + dishRot * Vector3.Scale(local, dishScale);
+        Vector3 horn = D(new Vector3(0, 2.75f, 0));
+        for (int k = 0; k < 3; k++)
+        {
+            float a = (90f + k * 120f) * Mathf.Deg2Rad;
+            Rod(xb, D(new Vector3(Mathf.Cos(a) * 0.46f, 0.1f, Mathf.Sin(a) * 0.46f)), horn, 0.022f, dark);
+        }
+        Prim(PrimitiveType.Cylinder, xb, new Vector3(0, 1.58f, 0.35f), new Vector3(0.15f, 0.05f, 0.15f), Vector3.zero, gold);
+        Prim(PrimitiveType.Cylinder, xb, new Vector3(0, 0.93f, 0.35f), new Vector3(0.2f, 0.03f, 0.2f), Vector3.zero, bright);
+    }
+
+    /// <summary>Star tracker on the front face: bracket, optical baffle tilted 20 degrees up, rim and lens.</summary>
+    static void StarTracker(Transform bus, Material bracket, Material baffle, Material rim, Material lens)
+    {
+        var root = new Vector3(-0.1f, 0.6f, -0.8f);
+        var axis = new Vector3(0f, Mathf.Sin(20f * Mathf.Deg2Rad), -Mathf.Cos(20f * Mathf.Deg2Rad));
+        var euler = new Vector3(-70f, 0, 0);     // cylinder axis (+Y) turned onto 'axis'
+        Prim(PrimitiveType.Cube, bus, root, Vector3.one * 0.22f, Vector3.zero, bracket);
+        Prim(PrimitiveType.Cylinder, bus, root + axis * 0.2f, new Vector3(0.18f, 0.1f, 0.18f), euler, baffle);
+        Prim(PrimitiveType.Cylinder, bus, root + axis * 0.29f, new Vector3(0.2f, 0.012f, 0.2f), euler, rim);
+        Prim(PrimitiveType.Cylinder, bus, root + axis * 0.302f, new Vector3(0.14f, 0.004f, 0.14f), euler, lens);
+    }
+
+    /// <summary>A thin cylinder from a to b (parent space): struts, feed lines, trusses.</summary>
+    static Transform Rod(Transform parent, Vector3 a, Vector3 b, float thickness, Material mat)
+    {
+        Vector3 d = b - a;
+        var t = Prim(PrimitiveType.Cylinder, parent, (a + b) * 0.5f, new Vector3(thickness, d.magnitude * 0.5f, thickness), Vector3.zero, mat);
+        if (d.sqrMagnitude > 1e-8f) t.localRotation = Quaternion.FromToRotation(Vector3.up, d.normalized);
+        return t;
     }
 
     Transform Module(string partId)
@@ -389,7 +568,7 @@ public class ProceduralSpacecraftView : MonoBehaviour
         foreach (var kv in _modules)
         {
             bool want = calc.IsSelected(kv.Key);
-            if (want && !kv.Value.activeSelf) kv.Value.transform.localScale = Vector3.one * 0.05f;
+            if (want && !kv.Value.activeSelf) StartPop(kv.Value.transform);
             kv.Value.SetActive(want);
         }
         bool hasBus = calc.Selected(PartCategory.Structure) != null;
@@ -467,6 +646,7 @@ public class ProceduralSpacecraftView : MonoBehaviour
 
     void Update()
     {
+        AnimateDetailMaterials();      // shared with the hologram and flight clones, so it runs even while the design view is hidden
         if (_cam == null || !_designVisible) return;
         float dt = Time.deltaTime;
 
@@ -480,10 +660,7 @@ public class ProceduralSpacecraftView : MonoBehaviour
             _orbitMarker.position = Vector3.Lerp(_orbitPts[i0], _orbitPts[(i0 + 1) % _orbitPts.Count], f - Mathf.Floor(f));
         }
 
-        // pop-in animation for newly enabled modules
-        foreach (var m in _modules.Values)
-            if (m.activeSelf && m.transform.localScale.x < 0.999f)
-                m.transform.localScale = Vector3.Lerp(m.transform.localScale, Vector3.one, dt * 10f);
+        AnimatePops(dt);
 
         HandleCameraInput(dt);
 
@@ -513,6 +690,49 @@ public class ProceduralSpacecraftView : MonoBehaviour
         Vector3 target = new Vector3(0, 0.1f, 0);
         _cam.transform.position = target + rot * new Vector3(0, 0, -_dist);
         _cam.transform.rotation = rot;
+    }
+
+    // ------------------------------------------------------------------ Phase 5 animation
+
+    /// <summary>Status LEDs blink in turn; the RTG heat cores breathe slowly.</summary>
+    void AnimateDetailMaterials()
+    {
+        if (_ledA == null) return;
+        float t = Time.unscaledTime;
+        bool a = Mathf.Repeat(t, 1.6f) < 0.16f, b = Mathf.Repeat(t + 0.8f, 1.6f) < 0.16f;
+        PhaseX.Station.StationKit.SetGlow(_ledA, new Color(0.3f, 1f, 0.5f), a ? 4f : 0.35f);
+        PhaseX.Station.StationKit.SetGlow(_ledB, new Color(1f, 0.68f, 0.18f), b ? 4f : 0.35f);
+        PhaseX.Station.StationKit.SetGlow(_rtgGlow, new Color(1f, 0.42f, 0.1f), 2.1f + 0.7f * Mathf.Sin(t * 1.7f));
+    }
+
+    /// <summary>A newly installed module starts tiny and springs to full size (see AnimatePops).</summary>
+    void StartPop(Transform module)
+    {
+        for (int i = _pops.Count - 1; i >= 0; i--) if (_pops[i].T == module) _pops.RemoveAt(i);
+        module.localScale = Vector3.one * PopStartScale;
+        _pops.Add(new Pop { T = module, K = 0f });
+    }
+
+    /// <summary>Scale 0.05 to 1 with a small overshoot (ease-out-back), so adding a part feels tactile.</summary>
+    void AnimatePops(float dt)
+    {
+        for (int i = _pops.Count - 1; i >= 0; i--)
+        {
+            var p = _pops[i];
+            if (p.T == null) { _pops.RemoveAt(i); continue; }
+            p.K += dt / PopSeconds;
+            if (p.K >= 1f || !p.T.gameObject.activeSelf)
+            {
+                p.T.localScale = Vector3.one;
+                _pops.RemoveAt(i);
+                continue;
+            }
+            const float c1 = 1.70158f, c3 = c1 + 1f;
+            float u = p.K - 1f;
+            float ease = 1f + c3 * u * u * u + c1 * u * u;
+            p.T.localScale = Vector3.one * Mathf.LerpUnclamped(PopStartScale, 1f, ease);
+            _pops[i] = p;
+        }
     }
 
     void HandleCameraInput(float dt)

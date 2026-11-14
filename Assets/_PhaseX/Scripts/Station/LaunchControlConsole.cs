@@ -51,6 +51,8 @@ namespace PhaseX.Station
             BuildStrapOns();
         }
 
+        void OnDestroy() => StationKit.Kill(_lightMat);
+
         /// <summary>
         /// Solid strap-on boosters for the pad rocket: two slender SRBs for Atlas V, four GEM 63XL for Vulcan Centaur.
         /// (The saved "Boosters" object is Falcon Heavy's pair of full-size liquid side cores.) Built at Play time,
