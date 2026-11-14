@@ -87,7 +87,7 @@ is paired with any orbit other than `orb_leo`. This one rule is in code, keyed b
 | Place | Code | Fallback for an unknown launcher id |
 |---|---|---|
 | Hologram stand miniature | `HologramAssemblyTable.BuildLvMinis()` / `LvIds` | nearest miniature by lift capacity |
-| Rocket on the launch pad | `LaunchControlConsole.PadScale()`; boosters: Falcon Heavy's liquid side cores (saved `Boosters` object), Atlas V's two SRBs and Vulcan's four GEM 63XL (`BuildStrapOns()`, built at Play time) | Falcon 9-size, no boosters |
+| Rocket on the launch pad | `LaunchControlConsole.PadScale()`; colours and the Pegasus wing: `ApplyLivery()`; boosters: Falcon Heavy's liquid side cores (saved `Boosters` object), Atlas V's two SRBs and Vulcan's four GEM 63XL (`BuildStrapOns()`, built at Play time) | Falcon 9-size, no boosters |
 | Ascent rocket in the flight sim | `TrajectorySimulator.BuildRocket()` | white Falcon 9-size |
 
 A station saved into a scene before the catalog grew is repaired at Play time: `HologramAssemblyTable.EnsureLvMinis()`

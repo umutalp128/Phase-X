@@ -32,7 +32,8 @@ namespace PhaseX.Station
         Vector3 _padPos;
         float _leverAngle, _leverTarget, _liftT = -1f, _jiggleUntil;
         ParticleSystem _smoke;
-        GameObject _atlasSrbs, _vulcanSrbs;
+        GameObject _atlasSrbs, _vulcanSrbs, _pegasusWing;
+        string _liveryId;
 
         public Vector3 RocketTop => rocket != null ? rocket.position + Vector3.up * rocketHeight * rocket.localScale.y : transform.position;
         public float RocketAltitude => _liftT < 0f ? 0f : 0.5f * Accel * _liftT * _liftT;
@@ -79,6 +80,49 @@ namespace PhaseX.Station
             }
             _atlasSrbs = Make("StrapOns_lv_atlas_v", 2, 0.95f, 9.5f, 10f);
             _vulcanSrbs = Make("StrapOns_lv_vulcan_centaur", 4, 1.3f, 11f, 14f);
+
+            // Pegasus XL's delta wing: a flat square turned 45 degrees, so two corners stick out as swept wings
+            var wing = StationKit.Node("Wing_lv_pegasus_xl", rocket, Vector3.zero);
+            StationKit.Box(wing, "DeltaWing", new Vector3(0, 10f, 0), new Vector3(7.5f, 7.5f, 0.22f), white, false, new Vector3(0, 0, 45f));
+            wing.gameObject.SetActive(false);
+            _pegasusWing = wing.gameObject;
+        }
+
+        /// <summary>
+        /// Paint the pad rocket like the chosen launcher, matching the hologram miniatures and the flight-sim rocket:
+        /// carbon-black Electron, carbon and grey Firefly Alpha, bronze Atlas V core, silver Vulcan Centaur upper stage,
+        /// white for the rest. Parts are found by name, so a station saved in a scene works unchanged.
+        /// </summary>
+        void ApplyLivery(string lvId)
+        {
+            if (rocket == null || lvId == _liveryId) return;
+            _liveryId = lvId;
+            var white = PhaseXMaterials.Lit(new Color(0.92f, 0.93f, 0.95f), 0.6f, 0.2f);
+            var silver = PhaseXMaterials.Lit(new Color(0.78f, 0.8f, 0.84f), 0.75f, 0.7f);
+            var dark = PhaseXMaterials.Lit(new Color(0.08f, 0.08f, 0.1f), 0.5f, 0.5f);
+            var carbon = PhaseXMaterials.Lit(new Color(0.07f, 0.07f, 0.08f), 0.55f, 0.3f);
+            var grey = PhaseXMaterials.Lit(new Color(0.22f, 0.23f, 0.26f), 0.5f, 0.3f);
+            var bronze = PhaseXMaterials.Lit(new Color(0.72f, 0.45f, 0.2f), 0.7f, 0.85f);
+
+            Material first = white, upper = white, fairing = white, band = dark;
+            switch (lvId)
+            {
+                case "lv_small": first = upper = fairing = carbon; band = grey; break;
+                case "lv_firefly_alpha": first = carbon; upper = fairing = grey; break;
+                case "lv_atlas_v": first = bronze; break;
+                case "lv_vulcan_centaur": upper = silver; break;
+            }
+            Paint("Stage1", first); Paint("Stage2", upper); Paint("Fairing", fairing); Paint("Nose", fairing); Paint("Interstage", band);
+            // the red stripe is Falcon-style decoration: hide it on the others
+            var stripe = rocket.Find("Stripe");
+            if (stripe != null) stripe.gameObject.SetActive(lvId == "lv_medium" || lvId == "lv_heavy");
+        }
+
+        void Paint(string child, Material mat)
+        {
+            var t = rocket.Find(child);
+            var r = t != null ? t.GetComponent<Renderer>() : null;
+            if (r != null) r.sharedMaterial = mat;
         }
 
         static void Show(GameObject go, bool on)
@@ -210,6 +254,8 @@ namespace PhaseX.Station
                     Show(boosters, lv.Id == "lv_heavy");                // full-size liquid side cores
                     Show(_atlasSrbs, lv.Id == "lv_atlas_v");            // two slender solids
                     Show(_vulcanSrbs, lv.Id == "lv_vulcan_centaur");    // four GEM 63XL solids
+                    Show(_pegasusWing, lv.Id == "lv_pegasus_xl");
+                    ApplyLivery(lv.Id);
                 }
             }
         }

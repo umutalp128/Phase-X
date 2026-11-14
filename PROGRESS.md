@@ -307,7 +307,6 @@ capacity. Full table in `ARCHITECTURE.md`.
 - Each launcher shows exactly its own miniature and the right pad scale and boosters. A stale 3-miniature table was
   rebuilt to 7. Full flights on Atlas V and Pegasus XL completed.
 - Screenshots of all seven miniatures, three pad rockets and two sim rockets were checked by eye.
-- Known limit: the pad rocket stays white for every launcher. Only the miniatures and the sim rocket have per-vehicle colours.
 
 ### Follow-up (2026-11-14)
 - **Balance:** Firefly Alpha now unlocks at Level 2 (`unlockLevel` in the JSON), so L1 offers Electron, Pegasus XL and
@@ -316,6 +315,9 @@ capacity. Full table in `ARCHITECTURE.md`.
   only Falcon Heavy keeps the full-size liquid side cores. Built at Play time, so saved scenes need no rebuild.
 - Verified in batch play mode with zero errors: Firefly Alpha cannot be selected on L1 and can on L2, the L1 reference
   design still scores 76.9, each of the seven launchers shows only its own booster set, and a Vulcan Centaur launch ran.
+- **Pad colours:** the pad rocket is painted per launcher (`LaunchControlConsole.ApplyLivery`): carbon-black Electron,
+  carbon and grey Firefly Alpha, bronze Atlas V core, silver Vulcan Centaur upper stage, white Falcon 9 / Heavy with the
+  red stripe, and a white Pegasus XL with its delta wing. Checked by material colour for all seven and by screenshot.
 
 ### Next phases (planned)
 - (On hold) Phase 4: 4-player co-op role ownership and segment sign-off; campaign unlocks; save progress.
