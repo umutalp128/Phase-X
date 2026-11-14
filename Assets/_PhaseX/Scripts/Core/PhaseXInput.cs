@@ -10,7 +10,7 @@ using UnityEngine.InputSystem;
 /// </summary>
 public static class PhaseXInput
 {
-    public enum K { F1, F2, F3, F4, D1, D2, D3, D4, D5, Space, Enter, Escape, C, Z, X, Tab }
+    public enum K { F1, F2, F3, F4, D1, D2, D3, D4, D5, Space, Enter, Escape, C, Z, X, Tab, W, A, S, D, E, V, Shift, Left, Right, Up, Down }
 
     public static bool Down(K k)
     {
@@ -35,6 +35,17 @@ public static class PhaseXInput
             case K.Z: return kb.zKey.wasPressedThisFrame;
             case K.X: return kb.xKey.wasPressedThisFrame;
             case K.Tab: return kb.tabKey.wasPressedThisFrame;
+            case K.W: return kb.wKey.wasPressedThisFrame;
+            case K.A: return kb.aKey.wasPressedThisFrame;
+            case K.S: return kb.sKey.wasPressedThisFrame;
+            case K.D: return kb.dKey.wasPressedThisFrame;
+            case K.E: return kb.eKey.wasPressedThisFrame;
+            case K.V: return kb.vKey.wasPressedThisFrame;
+            case K.Shift: return kb.leftShiftKey.wasPressedThisFrame || kb.rightShiftKey.wasPressedThisFrame;
+            case K.Left: return kb.leftArrowKey.wasPressedThisFrame;
+            case K.Right: return kb.rightArrowKey.wasPressedThisFrame;
+            case K.Up: return kb.upArrowKey.wasPressedThisFrame;
+            case K.Down: return kb.downArrowKey.wasPressedThisFrame;
         }
         return false;
 #else
@@ -56,6 +67,53 @@ public static class PhaseXInput
             case K.Z: return Input.GetKeyDown(KeyCode.Z);
             case K.X: return Input.GetKeyDown(KeyCode.X);
             case K.Tab: return Input.GetKeyDown(KeyCode.Tab);
+            case K.W: return Input.GetKeyDown(KeyCode.W);
+            case K.A: return Input.GetKeyDown(KeyCode.A);
+            case K.S: return Input.GetKeyDown(KeyCode.S);
+            case K.D: return Input.GetKeyDown(KeyCode.D);
+            case K.E: return Input.GetKeyDown(KeyCode.E);
+            case K.V: return Input.GetKeyDown(KeyCode.V);
+            case K.Shift: return Input.GetKeyDown(KeyCode.LeftShift) || Input.GetKeyDown(KeyCode.RightShift);
+            case K.Left: return Input.GetKeyDown(KeyCode.LeftArrow);
+            case K.Right: return Input.GetKeyDown(KeyCode.RightArrow);
+            case K.Up: return Input.GetKeyDown(KeyCode.UpArrow);
+            case K.Down: return Input.GetKeyDown(KeyCode.DownArrow);
+        }
+        return false;
+#endif
+    }
+
+    /// <summary>True while a movement key is held (used by the 3D character controller).</summary>
+    public static bool Held(K k)
+    {
+#if ENABLE_INPUT_SYSTEM
+        var kb = Keyboard.current;
+        if (kb == null) return false;
+        switch (k)
+        {
+            case K.W: return kb.wKey.isPressed;
+            case K.A: return kb.aKey.isPressed;
+            case K.S: return kb.sKey.isPressed;
+            case K.D: return kb.dKey.isPressed;
+            case K.Shift: return kb.leftShiftKey.isPressed || kb.rightShiftKey.isPressed;
+            case K.Left: return kb.leftArrowKey.isPressed;
+            case K.Right: return kb.rightArrowKey.isPressed;
+            case K.Up: return kb.upArrowKey.isPressed;
+            case K.Down: return kb.downArrowKey.isPressed;
+        }
+        return false;
+#else
+        switch (k)
+        {
+            case K.W: return Input.GetKey(KeyCode.W);
+            case K.A: return Input.GetKey(KeyCode.A);
+            case K.S: return Input.GetKey(KeyCode.S);
+            case K.D: return Input.GetKey(KeyCode.D);
+            case K.Shift: return Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+            case K.Left: return Input.GetKey(KeyCode.LeftArrow);
+            case K.Right: return Input.GetKey(KeyCode.RightArrow);
+            case K.Up: return Input.GetKey(KeyCode.UpArrow);
+            case K.Down: return Input.GetKey(KeyCode.DownArrow);
         }
         return false;
 #endif

@@ -191,6 +191,46 @@ A read-through of the Phase 1–3 code found these issues; all are fixed.
 - Not exercised: the delta-V warning text (no tested path left a later burn short), and all OnGUI layouts (the new report
   labels included), which batch mode cannot capture.
 
+## 3D Gameplay Overhaul — Walkable Mission Control Station ✅
+
+Phases 4 and 5 are on hold. The game now starts inside a **3D NASA Mission Control and Spacecraft Assembly Station** with a
+playable engineer. The Phase 1–3 systems are unchanged and are reached through the room. See `ARCHITECTURE.md`.
+
+| Area | What it does |
+|---|---|
+| `Player/` | `PhaseXPlayerController` (WASD, Shift sprint, mouse look, head bob, footsteps, [V] third person with an astronaut body), `PlayerInteractionSystem` ([E] on anything `IInteractable` within 3.5 m), `GameViewModeManager` (FreeRoam3D / MonitorTerminalGUI / StationPanel / LaunchSequenceCinematic) |
+| `Station/` | `StationBuilder` (procedural room, panoramic window, launch pad, rocket, player), `MissionControlStation` (blue / amber / green room state, beacon, wall telemetry), `MonitorTerminalStation`, `HologramAssemblyTable`, `MissionBriefingBoard`, `LaunchControlConsole`, `NasaKnowledgePod` ×3, plus `StationKit`, `StationAudio`, `StationProgress`, `StationKnowledge` |
+| `UI/StationHUD.cs` | Crosshair and prompt, Flight Director Checklist, Engineer XP and badges, panels, countdown, toasts, fades |
+| `Editor/Phase3DStationBuilder.cs` | Menu **PhaseX ▸ Build 3D Mission Control Station & Player** (and a Remove item) |
+
+### Game loop now
+1. Spawn in the station. Read the **Mission Briefing Board** and accept a mission.
+2. Press [E] at the **CAD Monitor**: the camera zooms into the screen and the existing workstation GUI opens.
+   ESC or **STEP AWAY FROM MONITOR** returns to the room.
+3. The **Hologram Table** shows the spacecraft being built. [E] cycles NASA X-Ray mode through the installed parts.
+4. Room lights, monitor and wall screen go amber on an engineering violation, green when the design is ready.
+5. Pull the **Launch Lever**. Not ready: buzzer, red beacon and a Flight Director Report. Ready: countdown, liftoff outside
+   the window, then the Phase 2–3 flight simulation and crises. Closing the report returns to the station with XP.
+
+### Changes to existing files (additive)
+- `PhaseXRuntimeUI`: static hooks `Hidden`, `StepAwayRequested`, `LaunchOverride`, `CanLeaveTerminal`, `DismissBriefing()`.
+- `PhaseXInput`: WASD, E, V, Shift and arrow keys, plus `Held()`.
+- `PhaseXBootstrap`: builds or adopts the station; `StationMode = false` restores the flat Phase 3 boot.
+
+### Controls (station)
+WASD walk · Shift sprint · mouse look · E interact · V first/third person · ESC leave a terminal or panel.
+In the Unity editor ESC also frees the mouse; click the Game view to capture it again.
+
+### Verified (2026-11-14)
+- Zero compiler errors.
+- Batch play-mode run of the whole loop, both with the room built at Play time and with it built into a fresh scene by the
+  editor menu (321 objects, adopted, not duplicated). Zero runtime errors in both.
+- Each station was found by the interaction ray with the right prompt. Rejected launch opened the Flight Director panel;
+  board accept, pod XP, monitor open and close, X-ray, launch, flight with 2 of 2 crises, and return to the room all passed.
+- 3D screenshots of every station, the countdown and the liftoff were checked by eye.
+- **Not verified:** everything drawn with OnGUI (station HUD, panels, checklist, the Step Away button), because batch mode
+  cannot capture it; real keyboard and mouse input (the test called the same methods directly); and audio.
+
 ### Next phases (planned)
-- Phase 4: 4-player co-op role ownership and segment sign-off; campaign unlocks; save progress.
-- Phase 5: polish, audio, accessibility, standalone builds, demo script.
+- (On hold) Phase 4: 4-player co-op role ownership and segment sign-off; campaign unlocks; save progress.
+- (On hold) Phase 5: polish, audio, accessibility, standalone builds, demo script.

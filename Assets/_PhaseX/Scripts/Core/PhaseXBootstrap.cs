@@ -8,6 +8,8 @@ using UnityEngine;
 public static class PhaseXBootstrap
 {
     public static GameObject Root { get; private set; }
+    /// <summary>Set to false to boot straight into the flat Phase 1-3 workstation (no 3D station, no character).</summary>
+    public static bool StationMode = true;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     static void ResetStatics() => Root = null;
@@ -32,6 +34,15 @@ public static class PhaseXBootstrap
         sim.Init(view);                                           // CML 4 Earth-to-Moon flight simulation
         Root.AddComponent<CrisisEventManager>().Init(sim, calc);  // CML 4 red-alert crisis events
         Root.AddComponent<PhaseXRuntimeUI>().Init(calc);
+
+        // 3D Mission Control: use a station built into the scene by the PhaseX menu, or build one now.
+        if (StationMode)
+        {
+            var station = PhaseX.Station.StationBuilder.EnsureStation();
+            var player = PhaseX.Station.StationBuilder.EnsurePlayer(station);
+            var hud = Root.AddComponent<PhaseX.UI.StationHUD>();
+            Root.AddComponent<PhaseX.Player.GameViewModeManager>().Init(calc, view, sim, station, player, hud);
+        }
 
         Debug.Log("[PHASE X] Mission Control workstation online - scenario: " + calc.CurrentScenario.Title);
     }

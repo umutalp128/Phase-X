@@ -148,7 +148,7 @@ public partial class PhaseXRuntimeUI
             _reportAt = -1f;
             _modal = Modal.Report;
         }
-        if (GUI.Button(new Rect(16, SimRightRect.height - 84, w - 32, 68), "RETURN TO DESIGN", _btn)) CloseReport();
+        if (GUI.Button(new Rect(16, SimRightRect.height - 84, w - 32, 68), StepAwayRequested != null ? "RETURN TO STATION" : "RETURN TO DESIGN", _btn)) CloseReport();
         GUI.EndGroup();
     }
 

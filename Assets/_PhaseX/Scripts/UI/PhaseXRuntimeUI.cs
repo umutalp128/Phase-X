@@ -27,6 +27,22 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
     /// <summary>Briefing or report window open (crises wait until it closes).</summary>
     public static bool ReportOrBriefingOpen => _modal != Modal.None;
 
+    // ---- 3D Mission Control station hooks (all null/false when the workstation runs on its own)
+    static PhaseXRuntimeUI _instance;
+    /// <summary>True while the player walks the 3D station: the workstation is not drawn and ignores keys.</summary>
+    public static bool Hidden;
+    /// <summary>Set by the station: called by the "Step away from monitor" button.</summary>
+    public static System.Action StepAwayRequested;
+    /// <summary>Set by the station: return true to take over a launch request (the launch lever lives in the 3D room).</summary>
+    public static System.Func<bool> LaunchOverride;
+    /// <summary>The workstation is idle on the design screen, so the player may step away from the monitor.</summary>
+    public static bool CanLeaveTerminal => _instance != null && !ModalOpen && !SimActive && !_instance.LaunchPending;
+    /// <summary>Close the CML 1 briefing window from outside (the 3D briefing board already showed it).</summary>
+    public static void DismissBriefing()
+    {
+        if (_instance != null && _modal == Modal.Briefing) _instance.CloseBriefing();
+    }
+
     MissionCalculator _calc;
     Vector2 _listScroll;
     string _hoverTitle, _hoverBody;
@@ -68,10 +84,14 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
     readonly List<Texture2D> _textures = new List<Texture2D>();
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-    static void ResetStatics() => _modal = Modal.Briefing;
+    static void ResetStatics()
+    {
+        _modal = Modal.Briefing; _instance = null; Hidden = false; StepAwayRequested = null; LaunchOverride = null;
+    }
 
     public void Init(MissionCalculator calc)
     {
+        _instance = this;
         _calc = calc;
         _calc.OnScenarioChanged += () =>
         {
@@ -118,7 +138,7 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
             Sim.Begin(_calc.CurrentScenario, _calc.LastLaunchReport ?? _calc.Report, _calc.SelectedParts);
         }
 
-        if (LaunchPending) return;
+        if (Hidden || LaunchPending) return;
 
         if (_modal == Modal.Briefing)
         {
@@ -145,8 +165,15 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
         if (PhaseXInput.Down(PhaseXInput.K.D3)) SetTab(MissionSegmentRole.SpaceSegment);
         if (PhaseXInput.Down(PhaseXInput.K.D4)) SetTab(MissionSegmentRole.GroundSegment);
         if (PhaseXInput.Down(PhaseXInput.K.D5)) SetTab(null);
-        if (PhaseXInput.Down(PhaseXInput.K.Space) && _reportAt < 0f && _simStartAt < 0f) _calc.Launch();
+        if (PhaseXInput.Down(PhaseXInput.K.Space)) RequestLaunch();
         if (PhaseXInput.Down(PhaseXInput.K.C)) _calc.ClearDesign();
+    }
+
+    void RequestLaunch()
+    {
+        if (_reportAt > 0f || _simStartAt > 0f) return;
+        if (LaunchOverride != null && LaunchOverride()) return;
+        _calc.Launch();
     }
 
     void SetTab(MissionSegmentRole? r)
@@ -187,7 +214,7 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
 
     void OnGUI()
     {
-        if (_calc == null || _calc.CurrentScenario == null) return;
+        if (Hidden || _calc == null || _calc.CurrentScenario == null) return;
         EnsureStyles();
         GUI.skin = _skin;
         GUI.matrix = Matrix4x4.TRS(Vector3.zero, Quaternion.identity, new Vector3(Screen.width / W, Screen.height / H, 1f));
@@ -290,6 +317,11 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
             if (i < 4) GUI.Label(new Rect(r.xMax, r.y, 26, r.height), Col(">", i < current ? Cyan : Dim), Style(_labelBold, 14, TextAnchor.MiddleCenter));
         }
 
+        if (StepAwayRequested != null && !SimActive)
+        {
+            if (GUI.Button(new Rect(W - 356, CmlRect.y + 4, 342, CmlRect.height - 8), "<  STEP AWAY FROM MONITOR  [ESC]", _btnOn)) StepAwayRequested();
+            return;
+        }
         string mode = _calc.CurrentScenario.IsSandbox ? "SANDBOX MODE" : _calc.RoleFilter == null ? "SOLO MODE" : "CO-OP: " + PhaseXDatabase.RoleTitle(_calc.RoleFilter.Value) + " SEGMENT";
         GUI.Label(new Rect(W - 380, CmlRect.y, 360, CmlRect.height), Col("MODE  ", Dim) + Col(mode, Amber), Style(_labelBold, 13, TextAnchor.MiddleRight));
     }
@@ -478,8 +510,10 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
         GUI.EndGroup();
 
         var lr = new Rect(16, RightRect.height - 96, w - 32, 82);
-        string label = ready ? "LAUNCH MISSION\n<size=13>[SPACEBAR] / CLICK</size>" : "LAUNCH (NOT READY)\n<size=13>[SPACEBAR] for root-cause report</size>";
-        if (GUI.Button(lr, label, ready ? _launchReady : _launchNot) && _reportAt < 0f && _simStartAt < 0f) _calc.Launch();
+        string label = !ready ? "LAUNCH (NOT READY)\n<size=13>[SPACEBAR] for root-cause report</size>"
+            : LaunchOverride != null ? "DESIGN APPROVED\n<size=13>pull the LAUNCH LEVER at the window console</size>"
+            : "LAUNCH MISSION\n<size=13>[SPACEBAR] / CLICK</size>";
+        if (GUI.Button(lr, label, ready ? _launchReady : _launchNot)) RequestLaunch();
         if (lr.Contains(Event.current.mousePosition))
             Hover("Launch Review", "Submits the design to the review board. A ready design advances to CML 4; otherwise the launch is scrubbed with a root-cause report.");
         GUI.EndGroup();
@@ -678,7 +712,7 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
                 Style(_label, 14, TextAnchor.MiddleRight));
         if (SimActive)
         {
-            if (GUI.Button(new Rect(40, h - 40 - 62, 250, 62), "BACK TO DESIGN", _btn)) CloseReport();
+            if (GUI.Button(new Rect(40, h - 40 - 62, 250, 62), StepAwayRequested != null ? "BACK TO STATION" : "BACK TO DESIGN", _btn)) CloseReport();
             if (GUI.Button(new Rect(300, h - 40 - 62, 250, 62), inFlight ? "KEEP FLYING  [ENTER]" : "KEEP FLYING  [ESC]", _btn)) _modal = Modal.None;
         }
         else if (GUI.Button(new Rect(40, h - 40 - 62, 320, 62), "BACK TO DESIGN  [ESC]", _btn)) CloseReport();
