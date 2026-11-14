@@ -32,6 +32,7 @@ namespace PhaseX.Station
         Vector3 _padPos;
         float _leverAngle, _leverTarget, _liftT = -1f, _jiggleUntil;
         ParticleSystem _smoke;
+        GameObject _atlasSrbs, _vulcanSrbs;
 
         public Vector3 RocketTop => rocket != null ? rocket.position + Vector3.up * rocketHeight * rocket.localScale.y : transform.position;
         public float RocketAltitude => _liftT < 0f ? 0f : 0.5f * Accel * _liftT * _liftT;
@@ -46,6 +47,43 @@ namespace PhaseX.Station
             if (flame != null) flame.gameObject.SetActive(false);
             if (flameLight != null) flameLight.enabled = false;
             BuildSmoke();
+            BuildStrapOns();
+        }
+
+        /// <summary>
+        /// Solid strap-on boosters for the pad rocket: two slender SRBs for Atlas V, four GEM 63XL for Vulcan Centaur.
+        /// (The saved "Boosters" object is Falcon Heavy's pair of full-size liquid side cores.) Built at Play time,
+        /// so a station saved in a scene gets them without re-running the editor menu.
+        /// </summary>
+        void BuildStrapOns()
+        {
+            if (rocket == null) return;
+            var white = PhaseXMaterials.Lit(new Color(0.92f, 0.93f, 0.95f), 0.6f, 0.2f);
+            var dark = PhaseXMaterials.Lit(new Color(0.08f, 0.08f, 0.1f), 0.5f, 0.5f);
+            const float coreRadius = 1.6f;
+            GameObject Make(string name, int count, float width, float height, float noseTilt)
+            {
+                var root = StationKit.Node(name, rocket, Vector3.zero);
+                for (int k = 0; k < count; k++)
+                {
+                    float a = (count == 2 ? k * 180f : k * 90f + 45f) * Mathf.Deg2Rad;
+                    var dir = new Vector3(Mathf.Cos(a), 0, Mathf.Sin(a));
+                    Vector3 p = dir * (coreRadius + width * 0.5f + 0.05f);
+                    StationKit.Prim(PrimitiveType.Cylinder, root, "SRB", p + Vector3.up * height * 0.5f, new Vector3(width, height * 0.5f, width), white);
+                    var nose = StationKit.Prim(PrimitiveType.Sphere, root, "SRBNose", p + Vector3.up * height, new Vector3(width, width * 2.4f, width), white);
+                    nose.localRotation = Quaternion.AngleAxis(noseTilt, Vector3.Cross(Vector3.up, -dir));   // nosecone leans in to the core
+                    StationKit.Prim(PrimitiveType.Cylinder, root, "SRBNozzle", p + Vector3.down * 0.3f, new Vector3(width * 0.75f, 0.4f, width * 0.75f), dark);
+                }
+                root.gameObject.SetActive(false);
+                return root.gameObject;
+            }
+            _atlasSrbs = Make("StrapOns_lv_atlas_v", 2, 0.95f, 9.5f, 10f);
+            _vulcanSrbs = Make("StrapOns_lv_vulcan_centaur", 4, 1.3f, 11f, 14f);
+        }
+
+        static void Show(GameObject go, bool on)
+        {
+            if (go != null && go.activeSelf != on) go.SetActive(on);
         }
 
         void BuildSmoke()
@@ -169,8 +207,9 @@ namespace PhaseX.Station
                 if (lv != null)
                 {
                     rocket.localScale = Vector3.one * PadScale(lv.Id);
-                    bool strapOns = lv.Id == "lv_heavy" || lv.Id == "lv_vulcan_centaur" || lv.Id == "lv_atlas_v";
-                    if (boosters != null && boosters.activeSelf != strapOns) boosters.SetActive(strapOns);
+                    Show(boosters, lv.Id == "lv_heavy");                // full-size liquid side cores
+                    Show(_atlasSrbs, lv.Id == "lv_atlas_v");            // two slender solids
+                    Show(_vulcanSrbs, lv.Id == "lv_vulcan_centaur");    // four GEM 63XL solids
                 }
             }
         }

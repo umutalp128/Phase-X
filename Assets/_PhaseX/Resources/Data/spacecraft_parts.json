@@ -41,7 +41,7 @@
       "partId": "lv_firefly_alpha",
       "partName": "Firefly Alpha (NASA VADR)",
       "category": "LaunchVehicle",
-      "unlockLevel": 1,
+      "unlockLevel": 2,
       "costMillionUSD": 15.0,
       "massKg": 0.0,
       "maxPayloadCapacityKg": 630.0,
