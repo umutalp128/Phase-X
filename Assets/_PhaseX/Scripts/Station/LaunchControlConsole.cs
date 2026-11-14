@@ -168,10 +168,25 @@ namespace PhaseX.Station
                 if (rocket.gameObject.activeSelf != (lv != null)) rocket.gameObject.SetActive(lv != null);
                 if (lv != null)
                 {
-                    float s = lv.Id == "lv_small" ? 0.55f : 1f;
-                    rocket.localScale = Vector3.one * s;
-                    if (boosters != null && boosters.activeSelf != (lv.Id == "lv_heavy")) boosters.SetActive(lv.Id == "lv_heavy");
+                    rocket.localScale = Vector3.one * PadScale(lv.Id);
+                    bool strapOns = lv.Id == "lv_heavy" || lv.Id == "lv_vulcan_centaur" || lv.Id == "lv_atlas_v";
+                    if (boosters != null && boosters.activeSelf != strapOns) boosters.SetActive(strapOns);
                 }
+            }
+        }
+
+        /// <summary>Size of the pad rocket by vehicle class (1 = Falcon 9-class).</summary>
+        static float PadScale(string lvId)
+        {
+            switch (lvId)
+            {
+                case "lv_pegasus_xl": return 0.50f;
+                case "lv_small": return 0.55f;
+                case "lv_firefly_alpha": return 0.72f;
+                case "lv_atlas_v": return 0.95f;
+                case "lv_vulcan_centaur": return 1.05f;
+                case "lv_heavy": return 1.08f;
+                default: return 1f;
             }
         }
 

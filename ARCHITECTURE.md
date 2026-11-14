@@ -63,8 +63,35 @@ unparsable file leaves the catalog empty. A single bad entry (no id, duplicate i
 still load. On success the console shows `[PhaseX] Successfully loaded N NASA spacecraft parts from spacecraft_parts.json`.
 
 **3D visuals are keyed by `partId`.** A new id plays correctly in the calculator and GUI but has no 3D module until one is
-added in `ProceduralSpacecraftView.BuildSpacecraft()`. Launch vehicles other than `lv_small`, `lv_medium` and `lv_heavy`
-show the medium rocket on the pad and no miniature on the hologram stand.
+added in `ProceduralSpacecraftView.BuildSpacecraft()`.
+
+### Launch vehicle catalog (7)
+
+| `partId` | Name | Lifts | Cost | Unlock | Reliability | Real-world basis |
+|---|---|---|---|---|---|---|
+| `lv_small` | Small Launcher (Electron-class) | 250 kg | $7.5M | 1 | 95% | Rocket Lab Electron; flew NASA's CAPSTONE |
+| `lv_pegasus_xl` | Pegasus XL (Air-Launched) | 443 kg | $40M | 1 | 96.5% | Dropped from the L-1011 "Stargazer"; flew ICON, IRIS, NuSTAR, CYGNSS. **LEO only** |
+| `lv_firefly_alpha` | Firefly Alpha (NASA VADR) | 630 kg | $15M | 1 | 94% | Carbon-composite small launcher; flew NASA's ELaNa 43 |
+| `lv_medium` | Medium Launcher (Falcon 9-class) | 1,500 kg | $67M | 1 | 98% | SpaceX Falcon 9 |
+| `lv_atlas_v` | Atlas V (ULA Centaur III) | 2,800 kg | $110M | 2 | 99.5% | Launched LRO/LCROSS, Perseverance, OSIRIS-REx |
+| `lv_vulcan_centaur` | Vulcan Centaur (Centaur V) | 4,500 kg | $120M | 3 | 98.5% | Flew the CLPS Peregrine mission to TLI (Cert-1, January 2024) |
+| `lv_heavy` | Heavy Launcher (Falcon Heavy-class) | 6,000 kg | $150M | 3 | 97% | SpaceX Falcon Heavy |
+
+Capacities and prices are gameplay values chosen to keep the real trade-off ladder, not contract figures.
+
+**Pegasus XL orbit rule.** `MissionCalculator.Evaluate()` adds the warning `LAUNCHER ORBIT LIMIT: ...` when `lv_pegasus_xl`
+is paired with any orbit other than `orb_leo`. This one rule is in code, keyed by id, not in the JSON.
+
+**Where each launcher is drawn** (all keyed by `partId`; an id without its own entry falls back as noted):
+
+| Place | Code | Fallback for an unknown launcher id |
+|---|---|---|
+| Hologram stand miniature | `HologramAssemblyTable.BuildLvMinis()` / `LvIds` | nearest miniature by lift capacity |
+| Rocket on the launch pad | `LaunchControlConsole.PadScale()` + boosters toggle | Falcon 9-size, no boosters |
+| Ascent rocket in the flight sim | `TrajectorySimulator.BuildRocket()` | white Falcon 9-size |
+
+A station saved into a scene before the catalog grew is repaired at Play time: `HologramAssemblyTable.EnsureLvMinis()`
+rebuilds the miniatures if they do not match `LvIds`.
 
 ## 2. Boot sequence
 

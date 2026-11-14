@@ -251,26 +251,47 @@ public class TrajectorySimulator : MonoBehaviour
         }
     }
 
+    /// <summary>The ascent / TLI rocket, styled after the chosen launch vehicle (size, core colour, wings, boosters).</summary>
     Transform BuildRocket(Transform parent, SpacecraftPart lv)
     {
-        float s = lv == null || lv.Id == "lv_small" ? 0.7f : lv.Id == "lv_heavy" ? 1.15f : 1f;
+        string id = lv != null ? lv.Id : "lv_small";
+        float s = id == "lv_pegasus_xl" ? 0.62f : id == "lv_small" ? 0.7f : id == "lv_firefly_alpha" ? 0.82f
+            : id == "lv_atlas_v" ? 0.97f : id == "lv_vulcan_centaur" ? 1.1f : id == "lv_heavy" ? 1.15f : 1f;
         var root = new GameObject("Rocket").transform;
         root.SetParent(parent, false);
         root.localScale = Vector3.one * 0.32f * s;
         var white = PhaseXMaterials.Lit(new Color(0.92f, 0.93f, 0.95f), 0.6f, 0.2f);
         var dark = PhaseXMaterials.Lit(new Color(0.12f, 0.12f, 0.14f), 0.5f, 0.5f);
+        var carbon = PhaseXMaterials.Lit(new Color(0.07f, 0.07f, 0.08f), 0.55f, 0.3f);
+        var bronze = PhaseXMaterials.Lit(new Color(0.72f, 0.45f, 0.2f), 0.7f, 0.85f);
+        // core: bronze Common Core Booster for Atlas V, carbon composite for Electron and Firefly Alpha
+        var core = id == "lv_atlas_v" ? bronze : id == "lv_small" || id == "lv_firefly_alpha" ? carbon : white;
+        var upper = id == "lv_small" || id == "lv_firefly_alpha" ? carbon : white;
         // rocket built along +Z (its flight direction)
-        Prim(PrimitiveType.Cylinder, root, Vector3.zero, new Vector3(0.3f, 0.9f, 0.3f), new Vector3(90, 0, 0), white);
-        Prim(PrimitiveType.Sphere, root, new Vector3(0, 0, 0.95f), new Vector3(0.3f, 0.3f, 0.6f), Vector3.zero, white);
+        Prim(PrimitiveType.Cylinder, root, new Vector3(0, 0, -0.28f), new Vector3(0.3f, 0.62f, 0.3f), new Vector3(90, 0, 0), core);
+        Prim(PrimitiveType.Cylinder, root, new Vector3(0, 0, 0.62f), new Vector3(0.3f, 0.28f, 0.3f), new Vector3(90, 0, 0), upper);
+        Prim(PrimitiveType.Sphere, root, new Vector3(0, 0, 0.95f), new Vector3(0.3f, 0.3f, 0.6f), Vector3.zero, upper);
         Prim(PrimitiveType.Cylinder, root, new Vector3(0, 0, 0.35f), new Vector3(0.31f, 0.03f, 0.31f), new Vector3(90, 0, 0), dark);
         for (int i = 0; i < 4; i++)
             Prim(PrimitiveType.Cube, root, Quaternion.Euler(0, 0, i * 90f) * new Vector3(0.2f, 0, -0.75f), new Vector3(0.18f, 0.02f, 0.3f), new Vector3(0, 0, i * 90f), dark);
-        if (lv != null && lv.Id == "lv_heavy")
+        if (id == "lv_pegasus_xl")
+        {
+            // swept delta wing: a flat square turned 45 degrees, so its corners stick out as two triangles
+            Prim(PrimitiveType.Cube, root, new Vector3(0, -0.12f, -0.1f), new Vector3(0.95f, 0.025f, 0.95f), new Vector3(0, 45, 0), white);
+        }
+        if (id == "lv_heavy" || id == "lv_vulcan_centaur" || id == "lv_atlas_v")
+        {
+            // Falcon Heavy: two full-size liquid side cores. Atlas V / Vulcan: slender solid strap-ons.
+            bool liquid = id == "lv_heavy";
+            float bw = liquid ? 0.28f : id == "lv_vulcan_centaur" ? 0.15f : 0.11f;
+            float bl = liquid ? 0.75f : 0.5f;
+            float off = 0.15f + bw * 0.5f + 0.02f;
             for (int sgn = -1; sgn <= 1; sgn += 2)
             {
-                Prim(PrimitiveType.Cylinder, root, new Vector3(sgn * 0.32f, 0, -0.1f), new Vector3(0.28f, 0.75f, 0.28f), new Vector3(90, 0, 0), white);
-                Prim(PrimitiveType.Sphere, root, new Vector3(sgn * 0.32f, 0, 0.68f), new Vector3(0.28f, 0.28f, 0.4f), Vector3.zero, white);
+                Prim(PrimitiveType.Cylinder, root, new Vector3(sgn * off, 0, -0.9f + bl), new Vector3(bw, bl, bw), new Vector3(90, 0, 0), white);
+                Prim(PrimitiveType.Sphere, root, new Vector3(sgn * off, 0, -0.9f + bl * 2f), new Vector3(bw, bw, bw * 1.6f), Vector3.zero, white);
             }
+        }
         Prim(PrimitiveType.Sphere, root, new Vector3(0, 0, -1.05f), new Vector3(0.28f, 0.28f, 0.6f), Vector3.zero,
             PhaseXMaterials.Lit(new Color(1f, 0.6f, 0.2f), 0.5f, 0f, new Color(3f, 1.4f, 0.3f)));
         return root;

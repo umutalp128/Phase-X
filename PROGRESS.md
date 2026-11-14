@@ -283,6 +283,33 @@ Schema and how-to are in `ARCHITECTURE.md` section 1a. Editor menu: **PhaseX ▸
 - Station status and hologram X-ray still work on the JSON catalog. Zero compiler and runtime errors.
 - Not tested: a standalone build (only the editor was run).
 
+## NASA Launch Vehicle Catalog: 7 Launchers ✅
+
+Four real launch vehicles added to `spacecraft_parts.json` (the catalog is JSON now, so nothing was added to
+`PhaseXDatabase.cs`): **Pegasus XL** (443 kg, $40M), **Firefly Alpha** (630 kg, $15M), **Atlas V** (2,800 kg, $110M, level 2)
+and **Vulcan Centaur** (4,500 kg, $120M, level 3). With the existing three they form a seven-step ladder in ascending
+capacity. Full table in `ARCHITECTURE.md`.
+
+- **Pegasus XL orbit rule:** `MissionCalculator` raises `LAUNCHER ORBIT LIMIT` when Pegasus XL is paired with a lunar orbit;
+  the Flight Director explains it at the lever.
+- **Hologram table:** seven distinct miniatures at one scale (carbon Electron, winged Pegasus XL, composite Firefly Alpha,
+  Falcon 9, bronze Atlas V with two SRBs, wide Vulcan Centaur with four GEM boosters, triple-core Falcon Heavy).
+  A station saved in a scene with the old three is rebuilt at Play time.
+- **Launch pad:** rocket scale per vehicle class; boosters shown for Atlas V, Vulcan Centaur and Falcon Heavy.
+- **Flight sim:** ascent rocket gets delta wings (Pegasus XL), a bronze core (Atlas V), a carbon body (Electron, Firefly
+  Alpha) and strap-on boosters (Atlas V, Vulcan Centaur, Falcon Heavy).
+
+### Verified (2026-11-14)
+- Zero compiler errors; batch play-mode test with zero runtime errors.
+- 22 parts load, 7 launchers in ascending capacity; L1 and L2 reference scores unchanged (76.9 / 79.5).
+- L2 flies on Firefly Alpha ($59.5M). Atlas V is unlocked on L2, Vulcan Centaur is not.
+- Pegasus XL + lunar orbit is rejected with the new warning and Flight Director text; Pegasus XL + LEO is valid.
+- Each launcher shows exactly its own miniature and the right pad scale and boosters. A stale 3-miniature table was
+  rebuilt to 7. Full flights on Atlas V and Pegasus XL completed.
+- Screenshots of all seven miniatures, three pad rockets and two sim rockets were checked by eye.
+- Known limit: the pad rocket uses the same full-size side boosters for Atlas V and Vulcan Centaur as for Falcon Heavy,
+  and stays white for every launcher. Only the miniatures and the sim rocket have per-vehicle colours and booster shapes.
+
 ### Next phases (planned)
 - (On hold) Phase 4: 4-player co-op role ownership and segment sign-off; campaign unlocks; save progress.
 - (On hold) Phase 5: polish, audio, accessibility, standalone builds, demo script.

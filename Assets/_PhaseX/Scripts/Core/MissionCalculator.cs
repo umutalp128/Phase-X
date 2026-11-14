@@ -213,6 +213,9 @@ public class MissionCalculator : MonoBehaviour
         if (orbit != null && sc.AllowedOrbitIds.Length > 0 && !sc.AllowedOrbitIds.Contains(orbit.Id))
             w.Add("WRONG DESTINATION: this mission needs " +
                   string.Join(" / ", sc.AllowedOrbitIds.Select(id => GetName(id))) + ".");
+        // NASA realism: Pegasus XL is a three-stage solid, air-launched LEO vehicle with no trans-lunar injection stage.
+        if (lv != null && lv.Id == "lv_pegasus_xl" && orbit != null && orbit.Id != "orb_leo")
+            w.Add("LAUNCHER ORBIT LIMIT: Pegasus XL is an air-launched LEO vehicle (no TLI upper stage) and cannot inject a spacecraft into lunar orbit.");
         if (sc.CheckDeltaV && dvAvail < dvReq && parts.Any(p => p.Category == PartCategory.Propulsion))
             w.Add($"DELTA-V SHORTFALL: {dvAvail:0} of {dvReq:0} m/s - a {craftMass:0} kg craft gets less from the same engine.");
         if (sc.CheckDataBottleneck && dataGen > downlink && downlink > 0)

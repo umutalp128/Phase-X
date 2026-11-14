@@ -100,6 +100,9 @@ namespace PhaseX.Station
                 }
                 else if (w.StartsWith("WRONG DESTINATION"))
                     lines.Add("That orbit doesn't reach the science target. " + Sentence(w));
+                else if (w.StartsWith("LAUNCHER ORBIT LIMIT"))
+                    lines.Add("Pegasus XL drops from an L-1011 aircraft and excels at Low Earth Orbit missions like ICON and NuSTAR, " +
+                              "but it has no restarts or TLI stage to reach the Moon. Pick a lunar-capable rocket at the CAD Monitor.");
                 else if (w.StartsWith("DELTA-V SHORTFALL"))
                     lines.Add($"You'd run out of propellant: {rep.DeltaV.Display}. Use a stronger engine or a lighter spacecraft.");
                 else if (w.StartsWith("DATA BOTTLENECK"))
