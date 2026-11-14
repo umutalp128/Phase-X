@@ -35,6 +35,9 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
     public static System.Action StepAwayRequested;
     /// <summary>Set by the station: return true to take over a launch request (the launch lever lives in the 3D room).</summary>
     public static System.Func<bool> LaunchOverride;
+    /// <summary>Set by the station: true while a launch is in progress and the flight screens must not be left.</summary>
+    public static System.Func<bool> ExitLocked;
+    static bool LaunchLocked => ExitLocked != null && ExitLocked();
     /// <summary>The workstation is idle on the design screen, so the player may step away from the monitor.</summary>
     public static bool CanLeaveTerminal => _instance != null && !ModalOpen && !SimActive && !_instance.LaunchPending;
     /// <summary>Close the CML 1 briefing window from outside (the 3D briefing board already showed it).</summary>
@@ -86,7 +89,7 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     static void ResetStatics()
     {
-        _modal = Modal.Briefing; _instance = null; Hidden = false; StepAwayRequested = null; LaunchOverride = null;
+        _modal = Modal.Briefing; _instance = null; Hidden = false; StepAwayRequested = null; LaunchOverride = null; ExitLocked = null;
     }
 
     public void Init(MissionCalculator calc)
@@ -296,7 +299,10 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
         {
             var s = list[i];
             var r = new Rect(bx + i * 196, 12, 190, 40);
+            bool wasEnabled = GUI.enabled;
+            GUI.enabled = wasEnabled && !LaunchLocked;      // no scenario switch during an active launch
             if (GUI.Button(r, $"[F{i + 1}]  {s.ShortName}", s == sc ? _btnOn : _btn)) _calc.LoadScenario(s);
+            GUI.enabled = wasEnabled;
             if (r.Contains(Event.current.mousePosition)) Hover("[F" + (i + 1) + "] " + s.Title, s.Objective);
         }
     }
@@ -712,7 +718,9 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
                 Style(_label, 14, TextAnchor.MiddleRight));
         if (SimActive)
         {
-            if (GUI.Button(new Rect(40, h - 40 - 62, 250, 62), StepAwayRequested != null ? "BACK TO STATION" : "BACK TO DESIGN", _btn)) CloseReport();
+            if (LaunchLocked)
+                GUI.Label(new Rect(40, h - 40 - 62, 250, 62), Col("LAUNCH IN PROGRESS\nstation locked", Dim), Style(_labelBold, 13, TextAnchor.MiddleLeft));
+            else if (GUI.Button(new Rect(40, h - 40 - 62, 250, 62), StepAwayRequested != null ? "RETURN TO\nMISSION CONTROL" : "BACK TO DESIGN", _btn)) CloseReport();
             if (GUI.Button(new Rect(300, h - 40 - 62, 250, 62), inFlight ? "KEEP FLYING  [ENTER]" : "KEEP FLYING  [ESC]", _btn)) _modal = Modal.None;
         }
         else if (GUI.Button(new Rect(40, h - 40 - 62, 320, 62), "BACK TO DESIGN  [ESC]", _btn)) CloseReport();

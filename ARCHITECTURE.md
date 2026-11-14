@@ -15,7 +15,7 @@ station** (added after Phase 3) in detail.
 | Workstation GUI | `UI/PhaseXRuntimeUI*.cs` | global | The Phase 1–3 mission-design GUI (OnGUI, virtual 1920×1080) |
 | **Player** | `Player/` | `PhaseX.Player` | Character controller, interaction ray, **view-mode state machine** |
 | **Station** | `Station/` | `PhaseX.Station` | The 3D room, its interactive stations, procedural builder, audio, progress, educational text |
-| **Station HUD** | `UI/StationHUD.cs` | `PhaseX.UI` | Crosshair, prompts, checklist, XP, panels, countdown, fades |
+| **Station HUD** | `UI/StationHUD.cs`, `UI/PauseMenuController.cs` | `PhaseX.UI` | Crosshair, prompts, checklist, XP, panels, countdown, fades; ESC pause menu |
 | Editor | `Editor/` | `PhaseX.EditorTools` | `PhaseX ▸ Build 3D Mission Control Station & Player` menu |
 
 The Phase 1–3 classes stay in the global namespace and were not renamed. New code lives in `PhaseX.*` namespaces
@@ -90,14 +90,28 @@ move, the cursor state, and which GUI is drawn.
 The station root is deactivated while the workstation or the flight simulation is on screen, so the two 3D worlds
 never appear in the same frame. The character is frozen (no gravity) while its floor is hidden.
 
+### Launch mode lock
+
+`IsLaunchModeLocked` is set in `StartLaunchSequence()` and cleared only in `ReturnFromFlight()`. Every mode or camera
+switch goes through `BlockedByLaunchLock()` first. The workstation asks `PhaseXRuntimeUI.ExitLocked` before offering any
+way out of the flight screens, which stays true until the flight and all its crises are finished.
+
+### Pause
+
+`PauseMenuController` (ESC while walking or during the countdown) sets `Time.timeScale = 0`, pauses audio and frees the
+cursor; `IsPaused` freezes the player and the interaction ray. It owns the mouse-sensitivity setting (PlayerPrefs key
+`PhaseX_MouseSensitivity`, a 0.1x–10x multiplier on `PhaseXPlayerController.DegreesPerPixel`). On resume it calls
+`GameViewModeManager.ApplyCursorForMode()`.
+
 ## 5. How the existing GUI is embedded
 
-The workstation was not rewritten. `PhaseXRuntimeUI` gained four static hooks:
+The workstation was not rewritten. `PhaseXRuntimeUI` gained a few static hooks:
 
 | Hook | Used for |
 |---|---|
 | `Hidden` | Do not draw or read keys while the player walks the station (timers keep running) |
 | `StepAwayRequested` | Shows the **STEP AWAY FROM MONITOR [ESC]** button in the top-right strip |
+| `ExitLocked` | Disables every exit from the flight screens while a launch is in progress |
 | `LaunchOverride` | A ready design is *approved* at the monitor but *launched* from the physical lever |
 | `CanLeaveTerminal`, `DismissBriefing()` | ESC handling, and letting the 3D briefing board replace the CML 1 window |
 

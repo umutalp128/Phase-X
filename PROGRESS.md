@@ -231,6 +231,40 @@ In the Unity editor ESC also frees the mouse; click the Game view to capture it 
 - **Not verified:** everything drawn with OnGUI (station HUD, panels, checklist, the Step Away button), because batch mode
   cannot capture it; real keyboard and mouse input (the test called the same methods directly); and audio.
 
+## Pause Menu & Launch Mode Lock ✅
+
+**ESC pause menu** (`UI/PauseMenuController.cs`): "PHASEX // SYSTEM PAUSED", one mouse-sensitivity slider (0.1x–10.0x,
+default 2.0x) with a live readout, and RESUME MISSION. Pausing sets `Time.timeScale = 0`, pauses audio, frees the cursor and
+freezes look, movement, the camera toggle and interaction. The value is applied to `PhaseXPlayerController.mouseSensitivity`
+as the slider moves and saved in PlayerPrefs under `PhaseX_MouseSensitivity`. On resume the cursor follows the view mode
+(`GameViewModeManager.ApplyCursorForMode()`): captured for walking and the countdown, free on GUI screens.
+
+Where ESC does what:
+
+| Where | ESC |
+|---|---|
+| Walking the station, launch countdown | Pause menu |
+| CAD monitor | Steps away from the monitor (BACKSPACE and the on-screen button do too) |
+| Station panel (board, pod, Flight Director report) | Closes the panel |
+| Flight simulation | Opens the status report (the flight has its own SPACE pause) |
+
+**Launch mode lock** (`GameViewModeManager.IsLaunchModeLocked`): set when the lever starts a launch, cleared only when the
+player returns to Mission Control after the flight. While set:
+- `EnterMonitorMode`, `ExitMonitorMode`, `EnterPanelMode`, `StartLaunchSequence` and the first/third-person toggle return at
+  once and log "[PhaseX] Mode switching is locked during the active Launch Sequence."
+- Movement is off and the interaction ray is disabled.
+- On the flight screens, RETURN TO MISSION CONTROL, the report's back button, the scenario buttons and F1–F4 are disabled until
+  the flight is complete and every Red Alert is answered (`PhaseXRuntimeUI.ExitLocked`).
+- The flight simulation's own camera views and time warp still work; they are part of the flight, not a way out of it.
+
+### Verified (2026-11-14)
+- Zero compiler errors. Batch play-mode test, 23 checks, zero runtime errors: pause state, time stop, player freeze,
+  slider rounding and clamping, live binding, PlayerPrefs save, cursor request per mode, every guard refusing during a
+  launch, exit buttons locked mid-flight and released after it, unlock on return.
+- **Not verified:** the pause menu's look and the slider's mouse dragging (OnGUI is not captured in batch mode), and real
+  ESC key presses (the test called `SetPaused` directly). Batch mode has no window focus, so the test checked the cursor
+  state the game *requested*, not the OS cursor.
+
 ### Next phases (planned)
 - (On hold) Phase 4: 4-player co-op role ownership and segment sign-off; campaign unlocks; save progress.
 - (On hold) Phase 5: polish, audio, accessibility, standalone builds, demo script.

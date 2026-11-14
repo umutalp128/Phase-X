@@ -10,7 +10,7 @@ using UnityEngine.InputSystem;
 /// </summary>
 public static class PhaseXInput
 {
-    public enum K { F1, F2, F3, F4, D1, D2, D3, D4, D5, Space, Enter, Escape, C, Z, X, Tab, W, A, S, D, E, V, Shift, Left, Right, Up, Down }
+    public enum K { F1, F2, F3, F4, D1, D2, D3, D4, D5, Space, Enter, Escape, C, Z, X, Tab, W, A, S, D, E, V, Shift, Left, Right, Up, Down, Backspace }
 
     public static bool Down(K k)
     {
@@ -46,6 +46,7 @@ public static class PhaseXInput
             case K.Right: return kb.rightArrowKey.wasPressedThisFrame;
             case K.Up: return kb.upArrowKey.wasPressedThisFrame;
             case K.Down: return kb.downArrowKey.wasPressedThisFrame;
+            case K.Backspace: return kb.backspaceKey.wasPressedThisFrame;
         }
         return false;
 #else
@@ -78,6 +79,7 @@ public static class PhaseXInput
             case K.Right: return Input.GetKeyDown(KeyCode.RightArrow);
             case K.Up: return Input.GetKeyDown(KeyCode.UpArrow);
             case K.Down: return Input.GetKeyDown(KeyCode.DownArrow);
+            case K.Backspace: return Input.GetKeyDown(KeyCode.Backspace);
         }
         return false;
 #endif

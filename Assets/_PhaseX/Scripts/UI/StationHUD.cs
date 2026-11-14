@@ -138,7 +138,7 @@ namespace PhaseX.UI
                 case GameViewMode.MonitorTerminalGUI:
                     if (_mgr.TerminalLive && PhaseXRuntimeUI.CanLeaveTerminal)
                         Shadowed(new Rect(W / 2 - 420, 110, 840, 24),
-                            Col("Press ", Dim) + Col("[ESC]", StationKit.Amber) + Col(" or click ", Dim) + Col("'Step Away from Monitor'", StationKit.Amber) + Col(" to return to the station", Dim),
+                            Col("Press ", Dim) + Col("[ESC] / [BACKSPACE]", StationKit.Amber) + Col(" or click ", Dim) + Col("'Step Away from Monitor'", StationKit.Amber) + Col(" to return to the station", Dim),
                             Style(_bold, 13, TextAnchor.MiddleCenter));
                     break;
                 case GameViewMode.StationPanel:
@@ -191,7 +191,7 @@ namespace PhaseX.UI
             DrawXRayCaption();
 
             Shadowed(new Rect(0, H - 40, W, 28),
-                Col("[WASD] Walk    [SHIFT] Sprint    [MOUSE] Look    [E] Interact    [V] First / third person    Click to recapture the mouse", Dim),
+                Col("[WASD] Walk    [SHIFT] Sprint    [MOUSE] Look    [E] Interact    [V] First / third person    [ESC] Pause & mouse sensitivity", Dim),
                 Style(_label, 14, TextAnchor.MiddleCenter));
         }
 

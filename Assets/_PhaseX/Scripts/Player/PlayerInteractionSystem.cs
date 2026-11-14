@@ -38,6 +38,7 @@ namespace PhaseX.Player
             Prompt = null;
             var mgr = GameViewModeManager.Instance;
             if (mgr == null || mgr.Mode != GameViewMode.FreeRoam3D || mgr.InTransition || _player == null) return;
+            if (mgr.IsLaunchModeLocked || PhaseX.UI.PauseMenuController.IsPaused) return;
             var cam = mgr.Camera;
             if (cam == null) return;
 

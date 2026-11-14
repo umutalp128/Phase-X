@@ -35,6 +35,11 @@ namespace PhaseX.Player
         public bool TerminalLive { get; private set; }
         /// <summary>Launch cinematic after the liftoff: the trajectory simulation owns the screen.</summary>
         public bool FlightPhase { get; private set; }
+        /// <summary>
+        /// True from the moment the launch lever is pulled until the player returns to Mission Control after the flight
+        /// (or the mission resets). While set, no view mode, camera view or station interaction can be changed.
+        /// </summary>
+        public bool IsLaunchModeLocked { get; private set; }
         public Camera Camera => _cam;
 
         MissionCalculator _calc;
@@ -79,6 +84,7 @@ namespace PhaseX.Player
             PhaseXRuntimeUI.Hidden = true;
             PhaseXRuntimeUI.StepAwayRequested = ExitMonitorMode;
             PhaseXRuntimeUI.LaunchOverride = OnMonitorLaunchRequest;
+            PhaseXRuntimeUI.ExitLocked = FlightExitLocked;
             _calc.OnScenarioChanged += StationProgress.ResetMission;
 
             if (station.spawnPoint != null) _player.Teleport(station.spawnPoint.position, station.spawnPoint.eulerAngles.y);
@@ -99,11 +105,34 @@ namespace PhaseX.Player
             if (_calc != null) _calc.OnScenarioChanged -= StationProgress.ResetMission;
             if (PhaseXRuntimeUI.StepAwayRequested == (Action)ExitMonitorMode) PhaseXRuntimeUI.StepAwayRequested = null;
             if (PhaseXRuntimeUI.LaunchOverride == (Func<bool>)OnMonitorLaunchRequest) PhaseXRuntimeUI.LaunchOverride = null;
+            if (PhaseXRuntimeUI.ExitLocked == (Func<bool>)FlightExitLocked) PhaseXRuntimeUI.ExitLocked = null;
             if (Instance == this) Instance = null;
         }
 
+        /// <summary>Guard for every mode / camera switch. Returns true (and says why) while a launch is in progress.</summary>
+        public bool BlockedByLaunchLock()
+        {
+            if (!IsLaunchModeLocked) return false;
+            Debug.Log("[PhaseX] Mode switching is locked during the active Launch Sequence.");
+            return true;
+        }
+
+        /// <summary>The player may only leave the flight screens once the flight and all its crises are finished.</summary>
+        bool FlightExitLocked() => IsLaunchModeLocked && !_flightCompleted;
+
+        /// <summary>Cursor for the current mode: captured for walking and the countdown, free for GUI screens.</summary>
+        public void ApplyCursorForMode()
+        {
+            bool locked = Mode == GameViewMode.FreeRoam3D || (Mode == GameViewMode.LaunchSequenceCinematic && !FlightPhase);
+            SetCursorLocked(locked);
+        }
+
+        /// <summary>The cursor state this manager last asked for (the OS may refuse a lock while the window is unfocused).</summary>
+        public static bool CursorLockRequested { get; private set; }
+
         static void SetCursorLocked(bool locked)
         {
+            CursorLockRequested = locked;
             Cursor.lockState = locked ? CursorLockMode.Locked : CursorLockMode.None;
             Cursor.visible = !locked;
         }
@@ -113,6 +142,7 @@ namespace PhaseX.Player
         /// <summary>Zoom the camera into a monitor and open the existing workstation GUI on it.</summary>
         public void EnterMonitorMode(Transform cameraFocusPoint)
         {
+            if (BlockedByLaunchLock()) return;
             if (Mode != GameViewMode.FreeRoam3D || InTransition || cameraFocusPoint == null) return;
             Mode = GameViewMode.MonitorTerminalGUI;
             TerminalLive = false;
@@ -133,6 +163,7 @@ namespace PhaseX.Player
         /// <summary>Step away from the monitor and return the camera to the character.</summary>
         public void ExitMonitorMode()
         {
+            if (BlockedByLaunchLock()) return;
             if (Mode != GameViewMode.MonitorTerminalGUI || !TerminalLive || InTransition) return;
             TerminalLive = false;
             PhaseXRuntimeUI.Hidden = true;
@@ -162,6 +193,7 @@ namespace PhaseX.Player
         /// <summary>Freeze the player and free the cursor while a station panel is open.</summary>
         public bool EnterPanelMode()
         {
+            if (BlockedByLaunchLock()) return false;
             if (Mode != GameViewMode.FreeRoam3D || InTransition) return false;
             Mode = GameViewMode.StationPanel;
             _player.ControlEnabled = false;
@@ -182,8 +214,11 @@ namespace PhaseX.Player
         /// <summary>Lever pulled on a valid design: countdown, liftoff outside the window, then the flight simulation.</summary>
         public void StartLaunchSequence(LaunchControlConsole console)
         {
+            if (BlockedByLaunchLock()) return;
             if (Mode != GameViewMode.FreeRoam3D || InTransition) return;
             Mode = GameViewMode.LaunchSequenceCinematic;
+            IsLaunchModeLocked = true;      // hard lock: released only by ReturnFromFlight()
+            _flightCompleted = false;
             FlightPhase = false;
             _player.ControlEnabled = false;
             StationProgress.Launched = true;
@@ -274,6 +309,7 @@ namespace PhaseX.Player
         /// <summary>Flight over (report closed, next mission loaded or flight abandoned): back to the station floor.</summary>
         void ReturnFromFlight()
         {
+            IsLaunchModeLocked = false;
             FlightPhase = false;
             PhaseXRuntimeUI.Hidden = true;
             _view.SetDesignVisible(false);
@@ -303,11 +339,12 @@ namespace PhaseX.Player
             {
                 case GameViewMode.FreeRoam3D:
                     // Unity's editor releases the cursor on ESC: a click in the game view captures it again.
-                    if (Cursor.lockState != CursorLockMode.Locked && PhaseXInput.AnyButtonPressedThisFrame) SetCursorLocked(true);
+                    if (Cursor.lockState != CursorLockMode.Locked && PhaseXInput.AnyButtonPressedThisFrame && !PauseMenuController.IsPaused) SetCursorLocked(true);
                     break;
                 case GameViewMode.MonitorTerminalGUI:
                     // ESC leaves the monitor, but not on the frame it was used to close a workstation window.
-                    if (TerminalLive && !InTransition && PhaseXInput.Down(PhaseXInput.K.Escape) &&
+                    // ESC or BACKSPACE leaves the monitor, but not on the frame it was used to close a workstation window.
+                    if (TerminalLive && !InTransition && (PhaseXInput.Down(PhaseXInput.K.Escape) || PhaseXInput.Down(PhaseXInput.K.Backspace)) &&
                         !_modalLastFrame && PhaseXRuntimeUI.CanLeaveTerminal)
                         ExitMonitorMode();
                     break;

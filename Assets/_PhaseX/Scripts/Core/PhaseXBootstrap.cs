@@ -41,7 +41,9 @@ public static class PhaseXBootstrap
             var station = PhaseX.Station.StationBuilder.EnsureStation();
             var player = PhaseX.Station.StationBuilder.EnsurePlayer(station);
             var hud = Root.AddComponent<PhaseX.UI.StationHUD>();
-            Root.AddComponent<PhaseX.Player.GameViewModeManager>().Init(calc, view, sim, station, player, hud);
+            var modes = Root.AddComponent<PhaseX.Player.GameViewModeManager>();
+            modes.Init(calc, view, sim, station, player, hud);
+            Root.AddComponent<PhaseX.UI.PauseMenuController>().Init(modes);
         }
 
         Debug.Log("[PHASE X] Mission Control workstation online - scenario: " + calc.CurrentScenario.Title);

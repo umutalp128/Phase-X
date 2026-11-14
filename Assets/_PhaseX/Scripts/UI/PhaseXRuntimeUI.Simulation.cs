@@ -28,6 +28,7 @@ public partial class PhaseXRuntimeUI
         if (PhaseXInput.Down(PhaseXInput.K.Tab)) sim.CycleCamera();
         if (PhaseXInput.Down(PhaseXInput.K.Escape) || PhaseXInput.Down(PhaseXInput.K.Enter)) { _reportAt = -1f; _modal = Modal.Report; }
 
+        if (LaunchLocked) return;      // no scenario switch during an active launch
         var sc = PhaseXDatabase.Scenarios;
         if (PhaseXInput.Down(PhaseXInput.K.F1) && sc.Count > 0) _calc.LoadScenario(sc[0]);
         if (PhaseXInput.Down(PhaseXInput.K.F2) && sc.Count > 1) _calc.LoadScenario(sc[1]);
@@ -148,7 +149,13 @@ public partial class PhaseXRuntimeUI
             _reportAt = -1f;
             _modal = Modal.Report;
         }
-        if (GUI.Button(new Rect(16, SimRightRect.height - 84, w - 32, 68), StepAwayRequested != null ? "RETURN TO STATION" : "RETURN TO DESIGN", _btn)) CloseReport();
+        var back = new Rect(16, SimRightRect.height - 84, w - 32, 68);
+        if (LaunchLocked)
+        {
+            GUI.Box(back, GUIContent.none, _cardLocked);
+            GUI.Label(back, Col("STATION LOCKED\n<size=11>finish the flight and every Red Alert</size>", Dim), Style(_labelBold, 14, TextAnchor.MiddleCenter));
+        }
+        else if (GUI.Button(back, StepAwayRequested != null ? "RETURN TO MISSION CONTROL" : "RETURN TO DESIGN", _btn)) CloseReport();
         GUI.EndGroup();
     }
 

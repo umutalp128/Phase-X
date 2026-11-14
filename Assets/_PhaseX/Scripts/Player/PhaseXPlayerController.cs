@@ -16,7 +16,10 @@ namespace PhaseX.Player
 
         public float walkSpeed = 3.6f;
         public float sprintSpeed = 6.4f;
-        public float mouseSensitivity = 0.11f;
+        /// <summary>Look-speed multiplier (0.1x - 10x, default 2.0x). Set live by the pause menu and saved in PlayerPrefs.</summary>
+        public float mouseSensitivity = 2f;
+        /// <summary>Degrees turned per pixel of mouse travel at 1.0x.</summary>
+        public const float DegreesPerPixel = 0.055f;
         public float eyeHeight = 1.62f;
         public float thirdPersonDistance = 3.4f;
         /// <summary>Head pivot (pitch). Created by the station builder.</summary>
@@ -43,6 +46,8 @@ namespace PhaseX.Player
             Instance = this;
             _cc = GetComponent<CharacterController>();
             Yaw = transform.eulerAngles.y;
+            mouseSensitivity = Mathf.Clamp(PlayerPrefs.GetFloat(PhaseX.UI.PauseMenuController.PrefKey, PhaseX.UI.PauseMenuController.DefaultSensitivity),
+                PhaseX.UI.PauseMenuController.MinSensitivity, PhaseX.UI.PauseMenuController.MaxSensitivity);
         }
 
         void Start()
@@ -70,6 +75,9 @@ namespace PhaseX.Player
 
         void Update()
         {
+            // Paused: no look, no movement, no camera toggle (the mouse is on the pause menu's slider).
+            if (PhaseX.UI.PauseMenuController.IsPaused) return;
+
             float dt = Time.deltaTime;
             Vector3 move = Vector3.zero;
 
@@ -79,8 +87,9 @@ namespace PhaseX.Player
                 if (Cursor.lockState == CursorLockMode.Locked)
                 {
                     Vector2 d = PhaseXInput.MouseDelta;
-                    Yaw += d.x * mouseSensitivity;
-                    Pitch = Mathf.Clamp(Pitch - d.y * mouseSensitivity, -80f, 80f);
+                    float degrees = DegreesPerPixel * mouseSensitivity;
+                    Yaw += d.x * degrees;
+                    Pitch = Mathf.Clamp(Pitch - d.y * degrees, -80f, 80f);
                 }
                 if (PhaseXInput.Down(PhaseXInput.K.V)) SetThirdPerson(!ThirdPerson);
 
@@ -124,6 +133,8 @@ namespace PhaseX.Player
 
         public void SetThirdPerson(bool on)
         {
+            var mgr = GameViewModeManager.Instance;
+            if (mgr != null && mgr.BlockedByLaunchLock()) return;
             ThirdPerson = on;
             if (body != null) body.SetActive(on);
         }
