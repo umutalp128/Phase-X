@@ -343,9 +343,12 @@ The numbers as specified left two missions impossible with the current part cata
 - **Destination orbits:** a mission's `AllowedOrbitIds` are now always unlocked, because CAPSTONE is Level 2 and NRHO
   unlocks at Level 3.
 
-Known issue, not changed: **NASA VIPER can be won, but not with a rover.** Rover + drill needs about 200 W at 45% sunlight
-and weighs too much for one engine: the best such design reaches 1,348 of the 1,600 m/s required. The winning design uses
-drill + neutron spectrometer + magnetometer, so the objective text ("deliver a rover") overstates what is possible.
+- **NASA VIPER (rebalanced after review):** required delta-V 1,150 → **850 m/s**, so a rover + drill design can win.
+  As first specified, rover + drill reached only 1,348 of the 1,600 m/s needed. The winning rover design needs solar arrays
+  *and* an RTG (245 W against 200–212 W at 45% sunlight), an X-band dish, a medium launcher and the NRHO; it leaves
+  48 m/s of margin with the full recommended trio (rover + drill + neutron spectrometer, $295M, score 72.8).
+  Solar-only and LLO versions of the rover design still fail, which is the intended lesson. The cheaper no-rover design
+  (drill + neutron + magnetometer, $102.5M) also still wins. A full rover flight with three crises landed with 33 m/s left.
 
 ### Verified (2026-11-14)
 - Zero compiler errors; batch play-mode test with zero runtime errors.

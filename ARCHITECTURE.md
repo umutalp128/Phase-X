@@ -133,7 +133,7 @@ If the file is missing or unusable, `PhaseXDatabase.BuiltInScenarios()` supplies
 | F4 | `nasa_capstone` | 2 | $65M | 35 | NRHO |
 | F5 | `nasa_lro` | 2 | $185M | 85 | LLO |
 | F6 | `lvl3_farside` | 3 | $320M | 90 | NRHO |
-| F7 | `nasa_viper` | 3 | $360M | 130 | LLO or NRHO, solar 45% |
+| F7 | `nasa_viper` | 3 | $360M | 130 | LLO or NRHO, solar 45%, 850 m/s descent |
 | F8 | `msn_cislunar_survey` | 3 | $240M | 110 | LLO or NRHO, 24 months |
 | F9 | `sandbox` | — | $1B | 100 | any |
 
