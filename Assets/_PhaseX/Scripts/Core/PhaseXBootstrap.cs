@@ -26,7 +26,9 @@ public static class PhaseXBootstrap
         Object.DontDestroyOnLoad(Root);
 
         var calc = Root.AddComponent<MissionCalculator>();      // Awake loads Level 1
-        Root.AddComponent<ProceduralSpacecraftView>().Init();
+        var view = Root.AddComponent<ProceduralSpacecraftView>();
+        view.Init();
+        Root.AddComponent<TrajectorySimulator>().Init(view);   // CML 4 Earth-to-Moon flight simulation
         Root.AddComponent<PhaseXRuntimeUI>().Init(calc);
 
         Debug.Log("[PHASE X] Mission Control workstation online - scenario: " + calc.CurrentScenario.Title);

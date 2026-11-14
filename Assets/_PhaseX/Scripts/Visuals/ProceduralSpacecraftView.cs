@@ -17,7 +17,8 @@ public class ProceduralSpacecraftView : MonoBehaviour
     readonly Dictionary<string, GameObject> _modules = new Dictionary<string, GameObject>();
     GameObject _frame;
 
-    Transform _earth, _moon, _orbitMarker;
+    Transform _earth, _moon, _orbitMarker, _backdrop;
+    bool _designVisible = true;
     LineRenderer _orbitLine;
     readonly List<Vector3> _orbitPts = new List<Vector3>();
     float _orbitT;
@@ -170,6 +171,7 @@ public class ProceduralSpacecraftView : MonoBehaviour
     {
         var env = new GameObject("Backdrop").transform;
         env.SetParent(transform, false);
+        _backdrop = env;
         _earth = Prim(PrimitiveType.Sphere, env, EarthPos, Vector3.one * EarthR * 2f, new Vector3(0, 0, 23.4f),
             PhaseXMaterials.Textured(PhaseXMaterials.EarthTexture(), 0.35f));
         _earth.name = "Earth";
@@ -388,9 +390,43 @@ public class ProceduralSpacecraftView : MonoBehaviour
         _launchOk = r.MissionReady;
     }
 
+    /// <summary>Hide the design spacecraft/backdrop and release the camera (used by the flight simulation).</summary>
+    public void SetDesignVisible(bool visible)
+    {
+        _designVisible = visible;
+        if (_craft != null) _craft.gameObject.SetActive(visible);
+        if (_backdrop != null) _backdrop.gameObject.SetActive(visible);
+        if (visible && _cam != null) _cam.fieldOfView = 42f;
+    }
+
+    /// <summary>Clone the current modular spacecraft (only installed modules), scaled to roughly <paramref name="size"/> units.</summary>
+    public Transform CreateFlightModel(Transform parent, float size)
+    {
+        if (_spin == null) return null;
+        var clone = Instantiate(_spin.gameObject, parent);
+        clone.name = "PlayerSpacecraft";
+        var t = clone.transform;
+        t.localPosition = Vector3.zero;
+        t.localRotation = Quaternion.identity;
+        t.localScale = Vector3.one;
+        foreach (Transform child in t) if (child.name.StartsWith("Module_")) child.localScale = Vector3.one;
+        var renderers = clone.GetComponentsInChildren<Renderer>();
+        if (renderers.Length == 0) return t;
+        Bounds b = renderers[0].bounds;
+        foreach (var r in renderers) b.Encapsulate(r.bounds);
+        float extent = Mathf.Max(b.size.x, b.size.y, b.size.z, 0.01f);
+        float k = size / extent;
+        t.localScale = Vector3.one * k;
+        t.localPosition = -parent.InverseTransformPoint(b.center) * k;
+        var holder = new GameObject("FlightModel").transform;
+        holder.SetParent(parent, false);
+        t.SetParent(holder, true);
+        return holder;
+    }
+
     void Update()
     {
-        if (_cam == null) return;
+        if (_cam == null || !_designVisible) return;
         float dt = Time.deltaTime;
 
         if (_earth != null) _earth.Rotate(0, 4f * dt, 0, Space.Self);

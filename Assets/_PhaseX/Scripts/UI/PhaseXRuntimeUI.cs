@@ -9,7 +9,7 @@ using UnityEngine;
 /// Layout: header + CML strip | left: segment tabs + part cards | center: 3D viewport |
 /// right: 6 live telemetry gauges, validation box, LAUNCH button | footer: advisor/tooltip.
 /// </summary>
-public class PhaseXRuntimeUI : MonoBehaviour
+public partial class PhaseXRuntimeUI : MonoBehaviour
 {
     public const float W = 1920f, H = 1080f;
 
@@ -31,6 +31,7 @@ public class PhaseXRuntimeUI : MonoBehaviour
     string _flash;
     float _flashUntil;
     float _reportAt = -1f;
+    float _simStartAt = -1f;
 
     // ---- theme
     static readonly Color Slate = new Color(0.055f, 0.075f, 0.115f, 0.94f);
@@ -55,8 +56,18 @@ public class PhaseXRuntimeUI : MonoBehaviour
     public void Init(MissionCalculator calc)
     {
         _calc = calc;
-        _calc.OnScenarioChanged += () => { _modal = Modal.Briefing; _reportAt = -1f; _listScroll = Vector2.zero; };
-        _calc.OnLaunched += r => { _reportAt = Time.unscaledTime + 1.3f; };
+        _calc.OnScenarioChanged += () =>
+        {
+            _modal = Modal.Briefing; _reportAt = -1f; _simStartAt = -1f; _listScroll = Vector2.zero;
+            if (Sim != null) Sim.End();
+        };
+        // Ready designs fly the CML 4 trajectory simulation first; scrubbed launches go straight to the report.
+        _calc.OnLaunched += r =>
+        {
+            if (r.MissionReady && Sim != null) _simStartAt = Time.unscaledTime + 1.3f;
+            else _reportAt = Time.unscaledTime + 1.3f;
+        };
+        if (Sim != null) Sim.OnFlightComplete += () => { if (_modal == Modal.None) _reportAt = Time.unscaledTime + 3f; };
         _modal = Modal.Briefing;
     }
 
@@ -70,7 +81,7 @@ public class PhaseXRuntimeUI : MonoBehaviour
     {
         if (ModalOpen || Screen.width <= 0 || Screen.height <= 0) return false;
         var v = new Vector2(screen.x * W / Screen.width, (Screen.height - screen.y) * H / Screen.height);
-        return ViewportRect.Contains(v);
+        return SimActive ? SimViewportRect.Contains(v) : ViewportRect.Contains(v);
     }
 
     // ================================================================== keyboard (Update)
@@ -84,6 +95,11 @@ public class PhaseXRuntimeUI : MonoBehaviour
             _reportAt = -1f;
             _modal = Modal.Report;
         }
+        if (_simStartAt > 0f && Time.unscaledTime >= _simStartAt)
+        {
+            _simStartAt = -1f;
+            Sim.Begin(_calc.CurrentScenario, _calc.LastLaunchReport ?? _calc.Report, _calc.SelectedParts);
+        }
 
         if (_modal == Modal.Briefing)
         {
@@ -94,9 +110,10 @@ public class PhaseXRuntimeUI : MonoBehaviour
         if (_modal == Modal.Report)
         {
             if (PhaseXInput.Down(PhaseXInput.K.Enter) || PhaseXInput.Down(PhaseXInput.K.Space)) ReportPrimary();
-            else if (PhaseXInput.Down(PhaseXInput.K.Escape)) CloseReport();
+            else if (PhaseXInput.Down(PhaseXInput.K.Escape)) { if (SimActive) _modal = Modal.None; else CloseReport(); }
             return;
         }
+        if (SimActive) { HandleSimKeys(); return; }
 
         var sc = PhaseXDatabase.Scenarios;
         if (PhaseXInput.Down(PhaseXInput.K.F1) && sc.Count > 0) _calc.LoadScenario(sc[0]);
@@ -108,7 +125,7 @@ public class PhaseXRuntimeUI : MonoBehaviour
         if (PhaseXInput.Down(PhaseXInput.K.D3)) SetTab(MissionSegmentRole.SpaceSegment);
         if (PhaseXInput.Down(PhaseXInput.K.D4)) SetTab(MissionSegmentRole.GroundSegment);
         if (PhaseXInput.Down(PhaseXInput.K.D5)) SetTab(null);
-        if (PhaseXInput.Down(PhaseXInput.K.Space) && _reportAt < 0f) _calc.Launch();
+        if (PhaseXInput.Down(PhaseXInput.K.Space) && _reportAt < 0f && _simStartAt < 0f) _calc.Launch();
         if (PhaseXInput.Down(PhaseXInput.K.C)) _calc.ClearDesign();
     }
 
@@ -127,6 +144,7 @@ public class PhaseXRuntimeUI : MonoBehaviour
     void CloseReport()
     {
         _modal = Modal.None;
+        if (Sim != null && Sim.Active) Sim.End();
         _calc.BeginDesign();
     }
 
@@ -159,10 +177,17 @@ public class PhaseXRuntimeUI : MonoBehaviour
 
         DrawHeader();
         DrawCmlStrip();
-        DrawLeftPanel();
-        DrawRightPanel();
-        DrawViewportHud();
-        DrawFooter();
+        if (SimActive)
+        {
+            DrawSimulationHud();
+        }
+        else
+        {
+            DrawLeftPanel();
+            DrawRightPanel();
+            DrawViewportHud();
+            DrawFooter();
+        }
 
         if (_modal != Modal.None)
         {
@@ -411,7 +436,7 @@ public class PhaseXRuntimeUI : MonoBehaviour
 
         var lr = new Rect(16, RightRect.height - 96, w - 32, 82);
         string label = ready ? "LAUNCH MISSION\n<size=13>[SPACEBAR] / CLICK</size>" : "LAUNCH (NOT READY)\n<size=13>[SPACEBAR] for root-cause report</size>";
-        if (GUI.Button(lr, label, ready ? _launchReady : _launchNot) && _reportAt < 0f) _calc.Launch();
+        if (GUI.Button(lr, label, ready ? _launchReady : _launchNot) && _reportAt < 0f && _simStartAt < 0f) _calc.Launch();
         if (lr.Contains(Event.current.mousePosition))
             Hover("Launch Review", "Submits the design to the review board. A ready design advances to CML 4; otherwise the launch is scrubbed with a root-cause report.");
         GUI.EndGroup();
@@ -459,7 +484,7 @@ public class PhaseXRuntimeUI : MonoBehaviour
             Col(sc.IsSandbox ? "SANDBOX" : "LEVEL " + sc.DifficultyLevel, Amber) + Col("   |   SCORE ", Dim) + $"{_calc.Report.Score:0}",
             Style(_labelBold, 13, TextAnchor.UpperRight));
 
-        if (_reportAt > 0f)
+        if (_reportAt > 0f || _simStartAt > 0f)
         {
             bool ok = _calc.LastLaunchReport != null && _calc.LastLaunchReport.MissionReady;
             GUI.Label(new Rect(ViewportRect.x, ViewportRect.yMax - 120, ViewportRect.width, 40),
@@ -575,8 +600,9 @@ public class PhaseXRuntimeUI : MonoBehaviour
         GUI.Label(new Rect(rx, ry, rw, 22), r.MissionReady ? "SYSTEMS ENGINEER'S NOTES" : "ROOT CAUSES", _h2);
         ry += 30;
         var items = r.MissionReady
-            ? (r.Advice.Count > 0 ? r.Advice : new List<string> { "Flawless design. The spacecraft reaches lunar operations with healthy margins." })
+            ? (r.Advice.Count > 0 ? new List<string>(r.Advice) : new List<string> { "Flawless design. The spacecraft reaches lunar operations with healthy margins." })
             : r.Warnings;
+        if (r.MissionReady && Sim != null && Sim.FlightSummary != null && Sim.Active) items.Insert(0, "FLIGHT: " + Sim.FlightSummary);
         var ls = Style(_label, 14, TextAnchor.UpperLeft);
         foreach (var it in items.Take(8))
         {
@@ -587,11 +613,16 @@ public class PhaseXRuntimeUI : MonoBehaviour
         }
         if (r.MissionReady)
             GUI.Label(new Rect(rx, Mathf.Max(ry + 10, 520), rw, 60),
-                Col("CML 4 lunar orbit simulation & crisis management arrive in the next phase.", Dim), Style(_small, 13, TextAnchor.UpperLeft));
+                Col("CML 4 crisis management (solar flares, comms loss, thruster faults) arrives in the next phase.", Dim), Style(_small, 13, TextAnchor.UpperLeft));
 
         var next = _calc.NextScenario();
         bool canNext = r.MissionReady && next != null;
-        if (GUI.Button(new Rect(40, h - 40 - 62, 320, 62), "BACK TO DESIGN  [ESC]", _btn)) CloseReport();
+        if (SimActive)
+        {
+            if (GUI.Button(new Rect(40, h - 40 - 62, 250, 62), "BACK TO DESIGN", _btn)) CloseReport();
+            if (GUI.Button(new Rect(300, h - 40 - 62, 250, 62), "KEEP FLYING  [ESC]", _btn)) _modal = Modal.None;
+        }
+        else if (GUI.Button(new Rect(40, h - 40 - 62, 320, 62), "BACK TO DESIGN  [ESC]", _btn)) CloseReport();
         if (canNext && GUI.Button(new Rect(w - 40 - 420, h - 40 - 62, 420, 62), $"NEXT MISSION: {next.ShortName}  [ENTER]", _launchReady))
             _calc.LoadScenario(next);
         if (!canNext && !r.MissionReady && GUI.Button(new Rect(w - 40 - 420, h - 40 - 62, 420, 62), "FIX THE DESIGN  [ENTER]", _launchNot))

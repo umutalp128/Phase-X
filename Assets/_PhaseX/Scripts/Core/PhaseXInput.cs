@@ -10,7 +10,7 @@ using UnityEngine.InputSystem;
 /// </summary>
 public static class PhaseXInput
 {
-    public enum K { F1, F2, F3, F4, D1, D2, D3, D4, D5, Space, Enter, Escape, C }
+    public enum K { F1, F2, F3, F4, D1, D2, D3, D4, D5, Space, Enter, Escape, C, Z, X, Tab }
 
     public static bool Down(K k)
     {
@@ -32,6 +32,9 @@ public static class PhaseXInput
             case K.Enter: return kb.enterKey.wasPressedThisFrame || kb.numpadEnterKey.wasPressedThisFrame;
             case K.Escape: return kb.escapeKey.wasPressedThisFrame;
             case K.C: return kb.cKey.wasPressedThisFrame;
+            case K.Z: return kb.zKey.wasPressedThisFrame;
+            case K.X: return kb.xKey.wasPressedThisFrame;
+            case K.Tab: return kb.tabKey.wasPressedThisFrame;
         }
         return false;
 #else
@@ -50,6 +53,9 @@ public static class PhaseXInput
             case K.Enter: return Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter);
             case K.Escape: return Input.GetKeyDown(KeyCode.Escape);
             case K.C: return Input.GetKeyDown(KeyCode.C);
+            case K.Z: return Input.GetKeyDown(KeyCode.Z);
+            case K.X: return Input.GetKeyDown(KeyCode.X);
+            case K.Tab: return Input.GetKeyDown(KeyCode.Tab);
         }
         return false;
 #endif
