@@ -105,7 +105,7 @@ public partial class PhaseXRuntimeUI
         TelemetryRow(ref y, w, "VELOCITY", $"{st.SpeedKms:0.00} km/s", TextC);
         TelemetryRow(ref y, w, "ALTITUDE ABOVE EARTH", $"{st.EarthAltitudeKm:N0} km", TextC);
         TelemetryRow(ref y, w, "DISTANCE TO MOON (SURFACE)", $"{st.MoonDistanceKm:N0} km", TextC);
-        TelemetryRow(ref y, w, "TIME WARP", sim.Paused ? "PAUSED" : $"{sim.Warp:0}x", sim.Paused ? Red : Green);
+        TelemetryRow(ref y, w, "TIME WARP", sim.Held ? "HELD - RED ALERT" : sim.Paused ? "PAUSED" : $"{sim.Warp:0}x", sim.Held || sim.Paused ? Red : Green);
 
         // delta-V budget bar
         float avail = Mathf.Max(1f, sim.DvAvailable);
@@ -116,10 +116,25 @@ public partial class PhaseXRuntimeUI
         Fill(bar, Track);
         Color dvc = rem / avail > 0.25f ? Green : rem > 0f ? Amber : Red;
         Fill(new Rect(bar.x, bar.y, bar.width * Mathf.Clamp01(rem / avail), bar.height), dvc);
-        y += 46;
+        y += 44;
 
-        GUI.Label(new Rect(16, y, w - 32, 22), "FLIGHT NOTE", _h2);
-        y += 26;
+        // live mission health (changed by crisis decisions)
+        var crisis = CrisisEventManager.Instance;
+        var live = crisis != null ? crisis.Live : null;
+        if (live != null)
+        {
+            Fill(new Rect(14, y, w - 28, 1), CyanDim);
+            GUI.Label(new Rect(16, y + 6, w - 32, 20), "MISSION HEALTH", _h2);
+            y += 30;
+            HealthRow(ref y, w, "POWER MARGIN", $"{(live.PowerMargin >= 0 ? "+" : "")}{live.PowerMargin:0} W  ({live.PowerGen:0} gen)", live.PowerMargin >= 0 ? (live.PowerMargin < live.PowerGen * 0.15f ? Amber : Green) : Red);
+            HealthRow(ref y, w, "SCIENCE RETURN", $"{live.Science:0} pts  ({live.SciencePct:0}%)", live.Science >= _calc.CurrentScenario.TargetScience ? Green : Amber);
+            HealthRow(ref y, w, "RELIABILITY", $"{live.Reliability * 100f:0.0}%  (min {live.MinReliability * 100f:0}%)", live.Reliability >= live.MinReliability ? Green : Red);
+            HealthRow(ref y, w, "LIFETIME", $"{Mathf.Min(live.LifetimeMonths, 999f):0} / {live.RequiredLifetime:0} months", live.LifetimeMonths >= live.RequiredLifetime ? Green : Red);
+            HealthRow(ref y, w, "BUDGET RESERVE", MissionCalculator.Money(live.BudgetReserveM), live.BudgetReserveM > 0 ? Green : Red);
+            HealthRow(ref y, w, "CRISES", $"{crisis.History.Count} / {crisis.ScheduledCount} handled   score {(live.ScoreDelta >= 0 ? "+" : "")}{live.ScoreDelta:0}", live.ScoreDelta >= 0 ? Green : Red);
+            y += 6;
+        }
+
         float boxH = SimRightRect.height - 170 - y;
         var box = new Rect(16, y, w - 32, boxH);
         GUI.Box(box, GUIContent.none, _card);
@@ -137,12 +152,19 @@ public partial class PhaseXRuntimeUI
         GUI.EndGroup();
     }
 
+    void HealthRow(ref float y, float w, string label, string value, Color c)
+    {
+        GUI.Label(new Rect(16, y, w - 32, 22), Col(label, Dim), Style(_labelBold, 11, TextAnchor.MiddleLeft));
+        GUI.Label(new Rect(16, y, w - 32, 22), Col(value, c), Style(_labelBold, 13, TextAnchor.MiddleRight));
+        y += 24;
+    }
+
     void TelemetryRow(ref float y, float w, string label, string value, Color c)
     {
         GUI.Label(new Rect(16, y, w - 32, 16), Col(label, Dim), Style(_labelBold, 11, TextAnchor.UpperLeft));
         GUI.Label(new Rect(16, y + 16, w - 32, 24), Col(value, c), Style(_labelBold, 18, TextAnchor.UpperLeft));
-        Fill(new Rect(16, y + 44, w - 32, 1), new Color(0.15f, 0.22f, 0.3f));
-        y += 52;
+        Fill(new Rect(16, y + 42, w - 32, 1), new Color(0.15f, 0.22f, 0.3f));
+        y += 46;
     }
 
     // ---------------------------------------------------------------- viewport overlays
@@ -210,7 +232,7 @@ public partial class PhaseXRuntimeUI
         GUI.BeginGroup(r);
         GUI.Label(new Rect(16, 6, 200, 18), Col("TIME WARP", Cyan), Style(_labelBold, 12, TextAnchor.UpperLeft));
         float bx = 16, by = 28, bw = 108, bh = 42;
-        if (GUI.Button(new Rect(bx, by, bw, bh), sim.Paused ? "RESUME\n<size=11>[SPACE]</size>" : "PAUSE\n<size=11>[SPACE]</size>", sim.Paused ? _btnOn : _btn)) sim.TogglePause();
+        if (GUI.Button(new Rect(bx, by, bw, bh), sim.Held ? "HELD\n<size=11>RED ALERT</size>" : sim.Paused ? "RESUME\n<size=11>[SPACE]</size>" : "PAUSE\n<size=11>[SPACE]</size>", sim.Paused || sim.Held ? _btnOn : _btn)) sim.TogglePause();
         WarpButton(sim, new Rect(bx + (bw + 6), by, bw, bh), 1f, "Z");
         WarpButton(sim, new Rect(bx + 2 * (bw + 6), by, bw, bh), 2f, "X");
         WarpButton(sim, new Rect(bx + 3 * (bw + 6), by, bw, bh), 4f, "C");

@@ -119,7 +119,47 @@ TLI itself is done by the launcher's upper stage, which is why launcher capacity
   in low lunar orbit, the Moon view of the halo orbit with the landed rover's relay link, and the Earth view.
 - Not yet checked by a person: the OnGUI flight HUD (OnGUI can't be captured in batch mode).
 
+---
+
+## Phase 3 — CML 4 Crisis Events & Red Alert Decisions ✅
+
+During the orbital flight, `CrisisEventManager` triggers **2–3 realistic crises** at dramatic moments, holds the mission clock
+on a **Red Alert**, and makes the player choose a trade-off response. Each choice changes the live mission stats.
+
+| File | Purpose |
+|---|---|
+| `Simulation/CrisisEventManager.cs` | Crisis schedule per flight profile, the 3 crisis definitions, design-dependent options, risk rolls, effects on live stats, follow-on consequences (power-negative, delta-V shortfall), crisis score |
+| `UI/PhaseXRuntimeUI.Crisis.cs` | Red Alert popup: pulsing red screen, crisis briefing plus a real-world lesson, "what's at stake" stat strip, 3 decision cards (unavailable ones show why), outcome panel listing every effect; crisis section in the engineering report |
+| `UI/PhaseXRuntimeUI.Simulation.cs` | New **MISSION HEALTH** panel: power margin, science return, reliability, lifetime, budget reserve, crisis score |
+| `Simulation/TrajectorySimulator.cs` | Crisis hold (separate from player pause), `SpendDv`, public log, flight-begin event, impact flash at the spacecraft |
+
+### Crises
+| Crisis | When | Options (trade-offs) |
+|---|---|---|
+| **Solar Storm (CME)** | Mid trans-lunar coast (LEO: during tests) | Safe mode (-12% science, zero risk) · Keep operating (bonus science, or a failure risk set by reliability and CubeSat shielding: -6% reliability, -12% power, -6% science) · Stow arrays (needs deployable arrays or an RTG; RTG avoids the -3 month battery wear) |
+| **Far-Side Comms Blackout** | Behind the Moon in low lunar orbit / during the L3 rover descent / DSN outage | Store & forward (data-rate dependent loss) · Boost transmitter (+25 W draw for the rest of the flight, needs power margin) · Buy DSN time ($3M budget reserve; X-band earns bonus science) |
+| **Micrometeoroid Strike** | Low Earth Orbit tests / lunar orbit | Isolate (-20% power, small propellant loss) · Reroute and burn the leak (-5% power, -60 m/s delta-V, -3% reliability; needs propulsion margin) · Monitor (reliability-based gamble: on failure -35% power and -40% lifetime) |
+
+Effects carry into later events: delta-V spent on a crisis can leave a later burn short, which costs science and score. A negative
+power margin halves lifetime. The engineering report shows **design score + crisis response = final score** (stars follow the final score),
+the decision made in each crisis, and mission health after the flight.
+
+### Also fixed in this phase
+- Modal windows: Unity's Editor log showed `GUI.ModalWindow` printing *"You cannot show two
+  modal windows at once"* in a real Game view. Briefing, report and crisis popups are now drawn as modal panels that block
+  input to the workstation underneath, with no `GUI.ModalWindow` calls.
+- Note: this project's Editor runs with **Enter Play Mode Options → Reload Domain disabled**. All PHASE X singletons and static
+  state reset through `[RuntimeInitializeOnLoadMethod(SubsystemRegistration)]`, so repeated Play presses start clean.
+
+### Verified (2026-11-14)
+- Zero compiler errors, with and without `ENABLE_INPUT_SYSTEM`.
+- Play-mode batch test flew L1, L2 and L3 with automated decisions:
+  - Every scheduled crisis fired (2 / 3 / 3), and the mission clock stayed frozen during each alert.
+  - Unavailable options were disabled correctly (the CubeSat can't stow body-mounted cells).
+  - Effects chained: on L3 the reroute burn left 91 m/s after the rover's 1,100 m/s descent.
+  - Final scores came out at 72–88, and the report opened with the crisis summary.
+- Not yet checked by a person: the OnGUI Red Alert popup layout (OnGUI can't be captured in batch mode).
+
 ### Next phases (planned)
-- Phase 3: CML 4 crisis events during the flight (solar flare, comms loss, thruster fault) with player decisions.
-- Phase 4: 4-player co-op role ownership and segment sign-off; campaign unlocks.
+- Phase 4: 4-player co-op role ownership and segment sign-off; campaign unlocks; save progress.
 - Phase 5: polish, audio, accessibility, standalone builds, demo script.

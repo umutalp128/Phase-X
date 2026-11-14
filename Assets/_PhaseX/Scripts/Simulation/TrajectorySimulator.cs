@@ -30,6 +30,21 @@ public class TrajectorySimulator : MonoBehaviour
     public float BurnFlashUntil { get; private set; }
 
     public event Action OnFlightComplete;
+    public event Action OnFlightBegin;
+
+    /// <summary>True while a crisis Red Alert holds the clock (independent of the player's pause).</summary>
+    public bool Held { get; private set; }
+    public void SetHeld(bool held) => Held = held;
+    public void SpendDv(float mps) => DvRemaining -= mps;
+    public void AddLog(string text) => AddLog(State.MetHours, text);
+
+    Transform _flash;
+    float _flashT = -1f;
+    public void TriggerAlertFlash(Color c)
+    {
+        _flashT = 0f;
+        if (_flash != null) _flash.GetComponent<Renderer>().sharedMaterial = PhaseXMaterials.Lit(c, 0.2f, 0f, c * 3f);
+    }
 
     ProceduralSpacecraftView _design;
     Camera _cam;
@@ -96,8 +111,10 @@ public class TrajectorySimulator : MonoBehaviour
         BuildScene(lv);
         Active = true;
         AddLog(Plan.MetAt(0), $"Flight plan loaded: {ModeName(mode)}. Launcher: {(lv != null ? lv.Name : "unknown")}.");
+        Held = false;
         StepTo(0f);
         _trail.Clear();
+        OnFlightBegin?.Invoke();
     }
 
     public void End()
@@ -194,6 +211,9 @@ public class TrajectorySimulator : MonoBehaviour
         }
         _model.gameObject.SetActive(false);
         _rocket = BuildRocket(_craft, lv);
+        _flash = Prim(PrimitiveType.Sphere, _craft, Vector3.zero, Vector3.one, Vector3.zero,
+            PhaseXMaterials.Lit(new Color(1f, 0.4f, 0.2f), 0.2f, 0f, new Color(4f, 1.2f, 0.4f)));
+        _flash.gameObject.SetActive(false);
         _marker = Prim(PrimitiveType.Sphere, _craft, Vector3.zero, Vector3.one * 0.3f, Vector3.zero,
             PhaseXMaterials.Lit(new Color(1f, 0.85f, 0.4f), 0.5f, 0f, new Color(1.6f, 1.1f, 0.35f)));
 
@@ -287,8 +307,19 @@ public class TrajectorySimulator : MonoBehaviour
     {
         if (!Active) return;
         float dt = Time.deltaTime;
-        if (!Paused) StepTo(SimTime + dt * Warp);
-        _earth.Rotate(0f, 6f * dt * (Paused ? 0f : Warp), 0f, Space.Self);
+        bool running = !Paused && !Held;
+        if (running) StepTo(SimTime + dt * Warp);
+        _earth.Rotate(0f, 6f * dt * (running ? Warp : 0f), 0f, Space.Self);
+
+        // crisis impact flash at the spacecraft
+        if (_flashT >= 0f)
+        {
+            _flashT += Time.unscaledDeltaTime;
+            float k = _flashT / 0.9f;
+            _flash.gameObject.SetActive(k < 1f);
+            if (k < 1f) _flash.localScale = Vector3.one * Mathf.Sin(k * Mathf.PI) * 1.6f;
+            else _flashT = -1f;
+        }
     }
 
     void StepTo(float t)

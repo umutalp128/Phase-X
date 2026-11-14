@@ -23,7 +23,9 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
 
     enum Modal { None, Briefing, Report }
     static Modal _modal = Modal.Briefing;
-    public static bool ModalOpen => _modal != Modal.None;
+    public static bool ModalOpen => _modal != Modal.None || CrisisActive;
+    /// <summary>Briefing or report window open (crises wait until it closes).</summary>
+    public static bool ReportOrBriefingOpen => _modal != Modal.None;
 
     MissionCalculator _calc;
     Vector2 _listScroll;
@@ -90,7 +92,7 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
     {
         if (_calc == null) return;
 
-        if (_reportAt > 0f && Time.unscaledTime >= _reportAt)
+        if (_reportAt > 0f && Time.unscaledTime >= _reportAt && !CrisisActive)
         {
             _reportAt = -1f;
             _modal = Modal.Report;
@@ -113,6 +115,7 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
             else if (PhaseXInput.Down(PhaseXInput.K.Escape)) { if (SimActive) _modal = Modal.None; else CloseReport(); }
             return;
         }
+        if (CrisisActive) { HandleCrisisKeys(); return; }
         if (SimActive) { HandleSimKeys(); return; }
 
         var sc = PhaseXDatabase.Scenarios;
@@ -175,6 +178,13 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
         _hoverTitle = null;
         _hoverBody = null;
 
+        // Modal handling without GUI.ModalWindow (which logs "two modal windows" when the Game view runs OnGUI
+        // more than once per frame): while a modal is open, input events are hidden from the workstation underneath.
+        bool modal = ModalOpen;
+        EventType original = Event.current.type;
+        bool blockInput = modal && (Event.current.isMouse || Event.current.isKey || original == EventType.ScrollWheel);
+        if (blockInput) Event.current.type = EventType.Ignore;
+
         DrawHeader();
         DrawCmlStrip();
         if (SimActive)
@@ -189,14 +199,29 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
             DrawFooter();
         }
 
+        if (blockInput && Event.current.type == EventType.Ignore) Event.current.type = original;
+
+        if (_modal == Modal.None && CrisisActive) DrawCrisisAlert();
+
         if (_modal != Modal.None)
         {
             Fill(new Rect(0, 0, W, H), new Color(0, 0.005f, 0.02f, 0.72f));
             if (_modal == Modal.Briefing)
-                GUI.ModalWindow(7101, new Rect(W / 2 - 520, 170, 1040, 700), DrawBriefingWindow, GUIContent.none, _window);
+                DrawModalPanel(new Rect(W / 2 - 520, 170, 1040, 700), DrawBriefingWindow);
             else
-                GUI.ModalWindow(7102, new Rect(W / 2 - 540, 140, 1080, 780), DrawReportWindow, GUIContent.none, _window);
+                DrawModalPanel(new Rect(W / 2 - 540, 140, 1080, 780), DrawReportWindow);
         }
+    }
+
+    /// <summary>Draw a modal panel: window background plus a clipped group, content coordinates relative to the panel.</summary>
+    void DrawModalPanel(Rect r, System.Action<int> content)
+    {
+        GUI.Box(r, GUIContent.none, _window);
+        GUI.BeginGroup(r);
+        content(0);
+        GUI.EndGroup();
+        // swallow clicks/scrolls on the panel so nothing behind reacts
+        if (r.Contains(Event.current.mousePosition) && (Event.current.isMouse || Event.current.type == EventType.ScrollWheel)) Event.current.Use();
     }
 
     // ---------------------------------------------------------------- header
@@ -568,7 +593,14 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
         Fill(new Rect(0, 0, w, 4), r.MissionReady ? Green : Red);
         GUI.Label(new Rect(40, 22, w - 80, 22), Col(r.MissionReady ? PhaseXDatabase.CmlTitle(CmlPhase.Cml4LunarOps) + "  //  POST-MISSION ENGINEERING REPORT" : "CML 3  //  LAUNCH SCRUBBED - ROOT-CAUSE ANALYSIS", r.MissionReady ? Amber : Red), Style(_labelBold, 15, TextAnchor.UpperLeft));
         GUI.Label(new Rect(40, 48, w - 300, 44), r.MissionReady ? "MISSION SUCCESS" : "MISSION NOT READY", Style(_title, 34, TextAnchor.UpperLeft));
-        GUI.Label(new Rect(40, 94, w - 80, 24), Col(sc.Title.ToUpperInvariant(), Cyan) + Col($"    SCORE {r.Score:0} / 100", TextC), Style(_labelBold, 16, TextAnchor.UpperLeft));
+        var crisisMgr = CrisisEventManager.Instance;
+        bool flown = r.MissionReady && SimActive && crisisMgr != null && crisisMgr.Live != null;
+        float finalScore = flown ? crisisMgr.FinalScore(r.Score) : r.Score;
+        int stars = !r.MissionReady ? 0 : 1 + (finalScore >= 72f ? 1 : 0) + (finalScore >= 84f ? 1 : 0);
+        string scoreText = flown
+            ? $"    DESIGN {r.Score:0}  {(crisisMgr.Live.ScoreDelta >= 0 ? "+" : "")}{crisisMgr.Live.ScoreDelta:0} CRISIS RESPONSE  =  FINAL SCORE {finalScore:0} / 100"
+            : $"    SCORE {r.Score:0} / 100";
+        GUI.Label(new Rect(40, 94, w - 80, 24), Col(sc.Title.ToUpperInvariant(), Cyan) + Col(scoreText, TextC), Style(_labelBold, 16, TextAnchor.UpperLeft));
 
         // stars (rotated squares; no glyphs needed)
         for (int i = 0; i < 3; i++)
@@ -576,7 +608,7 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
             var m = GUI.matrix;
             var c = new Vector2(w - 170 + i * 50, 72);
             GUIUtility.RotateAroundPivot(45f, c);
-            Fill(new Rect(c.x - 15, c.y - 15, 30, 30), i < r.Stars ? new Color(1f, 0.8f, 0.25f) : new Color(0.18f, 0.22f, 0.3f));
+            Fill(new Rect(c.x - 15, c.y - 15, 30, 30), i < stars ? new Color(1f, 0.8f, 0.25f) : new Color(0.18f, 0.22f, 0.3f));
             GUI.matrix = m;
         }
 
@@ -594,6 +626,8 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
         GUI.Label(new Rect(40, y + 4, 470, 24),
             Col("SCIENCE ", Dim) + $"{r.Science:0}/{r.TargetScience:0}" + Col("    RELIABILITY ", Dim) + $"{r.Reliability * 100f:0.0}%",
             Style(_labelBold, 14, TextAnchor.MiddleLeft));
+
+        if (flown) DrawCrisisSummary(new Rect(40, y + 40, 470, h - 40 - 62 - 16 - (y + 40)), crisisMgr);
 
         // right column: root causes or engineer's notes
         float rx = 560, rw = w - rx - 40, ry = 138;
