@@ -268,23 +268,29 @@ public class ProceduralSpacecraftView : MonoBehaviour
         for (int s = -1; s <= 1; s += 2)
             Prim(PrimitiveType.Cube, apollo, new Vector3(s * 0.2f, 1.36f, -0.5f), new Vector3(0.16f, 0.12f, 0.05f), new Vector3(-28f, 0, 0), PhaseXMaterials.Lit(Dark, 0.95f, 0.2f, new Color(0.05f, 0.2f, 0.35f)));
         Prim(PrimitiveType.Cylinder, apollo, new Vector3(0, 1.9f, 0), new Vector3(0.22f, 0.1f, 0.22f), Vector3.zero, PhaseXMaterials.Lit(Alu, 0.6f, 0.9f));   // docking tunnel
-        // Lunar Module, upside down relative to the CSM (docked nose-to-nose): ascent stage, then descent stage with legs
-        Prim(PrimitiveType.Cube, apollo, new Vector3(0, 2.3f, 0), new Vector3(0.95f, 0.62f, 0.8f), Vector3.zero, lmGrey);                // ascent stage cabin
-        Prim(PrimitiveType.Cube, apollo, new Vector3(0, 2.3f, -0.42f), new Vector3(0.62f, 0.4f, 0.12f), Vector3.zero, PhaseXMaterials.Lit(Dark, 0.5f, 0.5f));
+        // Lunar Module, upside down relative to the CSM (docked nose-to-nose): ascent stage, then descent stage with legs.
+        // Every LM piece lives under one named child, so the flight simulation can switch the whole Lunar Module off
+        // when it undocks to land (TrajectorySimulator), leaving the Command/Service Module in orbit on its own.
+        var dockedLm = new GameObject(DockedLunarModuleName).transform;
+        dockedLm.SetParent(apollo, false);
+        var lmDark = PhaseXMaterials.Lit(Dark, 0.5f, 0.5f);
+        var lmGlass = PhaseXMaterials.Lit(Dark, 0.95f, 0.2f, new Color(0.05f, 0.2f, 0.35f));
+        Named("LMAscentCabin", Prim(PrimitiveType.Cube, dockedLm, new Vector3(0, 2.3f, 0), new Vector3(0.95f, 0.62f, 0.8f), Vector3.zero, lmGrey));
+        Named("LMAscentFront", Prim(PrimitiveType.Cube, dockedLm, new Vector3(0, 2.3f, -0.42f), new Vector3(0.62f, 0.4f, 0.12f), Vector3.zero, lmDark));
         for (int s = -1; s <= 1; s += 2)
         {
-            Prim(PrimitiveType.Cube, apollo, new Vector3(s * 0.2f, 2.32f, -0.49f), new Vector3(0.16f, 0.16f, 0.03f), new Vector3(0, 0, s * 45f), PhaseXMaterials.Lit(Dark, 0.95f, 0.2f, new Color(0.05f, 0.2f, 0.35f)));
-            Prim(PrimitiveType.Sphere, apollo, new Vector3(s * 0.62f, 2.28f, 0.1f), Vector3.one * 0.42f, Vector3.zero, lmGrey);         // propellant tanks
+            Named("LMWindow", Prim(PrimitiveType.Cube, dockedLm, new Vector3(s * 0.2f, 2.32f, -0.49f), new Vector3(0.16f, 0.16f, 0.03f), new Vector3(0, 0, s * 45f), lmGlass));
+            Named("LMTank", Prim(PrimitiveType.Sphere, dockedLm, new Vector3(s * 0.62f, 2.28f, 0.1f), Vector3.one * 0.42f, Vector3.zero, lmGrey));
         }
-        Prim(PrimitiveType.Cylinder, apollo, new Vector3(0, 2.9f, 0), new Vector3(1.5f, 0.28f, 1.5f), new Vector3(0, 22.5f, 0), foil);   // descent stage
-        Prim(PrimitiveType.Cube, apollo, new Vector3(0, 2.9f, 0), new Vector3(1.3f, 0.5f, 1.3f), new Vector3(0, 45f, 0), foil);          // squared-off corners read as an octagon
-        Prim(PrimitiveType.Cylinder, apollo, new Vector3(0, 3.25f, 0), new Vector3(0.5f, 0.1f, 0.5f), Vector3.zero, PhaseXMaterials.Lit(Dark, 0.5f, 0.7f)); // descent engine bell
+        Named("LMDescentOctA", Prim(PrimitiveType.Cylinder, dockedLm, new Vector3(0, 2.9f, 0), new Vector3(1.5f, 0.28f, 1.5f), new Vector3(0, 22.5f, 0), foil));
+        Named("LMDescentOctB", Prim(PrimitiveType.Cube, dockedLm, new Vector3(0, 2.9f, 0), new Vector3(1.3f, 0.5f, 1.3f), new Vector3(0, 45f, 0), foil));   // squared-off corners read as an octagon
+        Named("LMDescentBell", Prim(PrimitiveType.Cylinder, dockedLm, new Vector3(0, 3.25f, 0), new Vector3(0.5f, 0.1f, 0.5f), Vector3.zero, PhaseXMaterials.Lit(Dark, 0.5f, 0.7f)));
         for (int i = 0; i < 4; i++)
         {
             var rot = Quaternion.Euler(0, i * 90f, 0);
-            var leg = Prim(PrimitiveType.Cylinder, apollo, rot * new Vector3(0, 3.2f, 0.98f), new Vector3(0.05f, 0.5f, 0.05f), Vector3.zero, PhaseXMaterials.Lit(Alu, 0.6f, 0.9f));
+            var leg = Named("LMLeg_" + i, Prim(PrimitiveType.Cylinder, dockedLm, rot * new Vector3(0, 3.2f, 0.98f), new Vector3(0.05f, 0.5f, 0.05f), Vector3.zero, PhaseXMaterials.Lit(Alu, 0.6f, 0.9f)));
             leg.localRotation = rot * Quaternion.Euler(32f, 0, 0);
-            Prim(PrimitiveType.Cylinder, apollo, rot * new Vector3(0, 3.62f, 1.25f), new Vector3(0.3f, 0.02f, 0.3f), Vector3.zero, foil);   // footpad
+            Named("LMFoot_" + i, Prim(PrimitiveType.Cylinder, dockedLm, rot * new Vector3(0, 3.62f, 1.25f), new Vector3(0.3f, 0.02f, 0.3f), Vector3.zero, foil));
         }
 
         // --- Apollo propulsion: big AJ10-137 SPS bell under the Service Module + four RCS quads on the rim
@@ -663,6 +669,15 @@ public class ProceduralSpacecraftView : MonoBehaviour
             yield return (new Vector3(i * h.x, 0, j * h.z), new Vector3(t, h.y * 2f + t, t));
             yield return (new Vector3(0, i * h.y, j * h.z), new Vector3(h.x * 2f + t, t, t));
         }
+    }
+
+    /// <summary>Child of Module_str_apollo_csm_lm that holds the whole docked Lunar Module.</summary>
+    public const string DockedLunarModuleName = "DockedLunarModule";
+
+    static Transform Named(string name, Transform t)
+    {
+        t.name = name;
+        return t;
     }
 
     static Transform Prim(PrimitiveType type, Transform parent, Vector3 pos, Vector3 scale, Vector3 euler, Material mat)

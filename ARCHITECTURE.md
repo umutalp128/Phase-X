@@ -163,6 +163,12 @@ A design containing `str_apollo_csm_lm` or `pl_apollo_alsep` flies a **crewed la
 "CREWED LUNAR LANDING" segment after orbit insertion (from low lunar orbit, on the near side), the simulator shows a
 miniature Lunar Module descending, and the mission's `RequiredDeltaV` is spent on descent and ascent.
 
+**One lander at a time.** In the spacecraft model every Lunar Module piece is a child of `DockedLunarModule` inside
+`Module_str_apollo_csm_lm`. When the separate lander model appears in the flight (`FlightState.RoverVisible`),
+`TrajectorySimulator.StepTo()` hides that group and `Module_pl_apollo_alsep` on the orbiting spacecraft, so the
+Command/Service Module flies on alone; stepping back before the separation shows them again. The far-side rover mission
+does the same with `Module_pl_rover`. The surface Lunar Module is drawn at 0.42 scale to sit in proportion on the Moon.
+
 On the Apollo stack the Command Module occupies the top of the bus, so `ProceduralSpacecraftView.Refresh()` moves the
 top-mounted parts (X-band dish, S-band antenna, neutron spectrometer) to the side of the Service Module.
 

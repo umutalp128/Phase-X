@@ -479,6 +479,20 @@ confirmation, and QUIT GAME saves first. Details in `ARCHITECTURE.md` section 1d
 - **Not verified:** the pause menu's new layout and the confirmation dialog on screen (OnGUI is not captured), real
   button clicks and ESC presses (the test called the same methods), the quit-save in a standalone build, and WebGL.
 
+## Fix: Two Lunar Modules During the Apollo Landing ✅
+
+- **Duplicate lander:** when the Lunar Module undocked to land, the copy docked on the orbiting spacecraft stayed visible.
+  All LM pieces now sit under one `DockedLunarModule` child, and the flight sim hides it (and the ALSEP package) while
+  the separate lander is out. Stepping back before the separation docks it again. The far-side rover mission had the
+  same flaw with its stowed rover and is fixed the same way.
+- **Size:** the Lunar Module on the Moon is drawn at 0.42 scale (about 0.28 units against a Moon radius of 1.7), with a
+  smaller tracking beacon above the ascent stage.
+- The docked stack in the design viewport is unchanged.
+
+Verified (2026-11-15) in batch play mode with zero errors or warnings: one LM before separation, one after, re-docking on
+stepping back, references cleared after the flight, and the rover mission. Screenshots of the docked stack, the CSM alone
+in orbit and the landed LM were checked by eye.
+
 ### Next phases (planned)
 - (On hold) Phase 4: 4-player co-op role ownership and segment sign-off; campaign unlocks; save progress.
 - (On hold) Phase 5: polish, audio, accessibility, standalone builds, demo script.

@@ -62,6 +62,9 @@ public class TrajectorySimulator : MonoBehaviour
     GameObject _root;
     Transform _earth, _moonAnchor, _moonMesh, _craft, _rocket, _model, _marker, _rover;
     LineRenderer _parkLine, _transferLine, _lunarLine, _moonPath, _linkEarth, _linkRover;
+    // Parts of the orbiting spacecraft that leave with the lander: the docked Lunar Module and its ALSEP package
+    // (Apollo), or the stowed rover (far-side mission). Hidden while the separate lander model is flying.
+    Transform _dockedLm, _dockedAlsep, _stowedRover;
     TrailRenderer _trail;
     readonly List<LineRenderer> _lines = new List<LineRenderer>();
     readonly List<UnityEngine.Object> _owned = new List<UnityEngine.Object>();
@@ -142,6 +145,7 @@ public class TrajectorySimulator : MonoBehaviour
         _owned.Clear();
         _lines.Clear();
         _root = null;
+        _dockedLm = null; _dockedAlsep = null; _stowedRover = null;
         if (_cam != null) _cam.fieldOfView = 42f;
         _design?.SetDesignVisible(true);
     }
@@ -228,6 +232,17 @@ public class TrajectorySimulator : MonoBehaviour
         {
             _model = Prim(PrimitiveType.Cylinder, _craft, Vector3.zero, new Vector3(0.25f, 0.2f, 0.25f), Vector3.zero, PhaseXMaterials.Lit(new Color(0.86f, 0.64f, 0.2f), 0.8f, 0.9f));
         }
+        // Find what undocks for the landing. Only parts that are actually installed (active in the clone) count,
+        // so an unselected module is never switched on by mistake.
+        _dockedLm = null; _dockedAlsep = null; _stowedRover = null;
+        if (Plan.HasRover)
+            foreach (var t in _model.GetComponentsInChildren<Transform>(true))
+            {
+                if (!t.gameObject.activeSelf) continue;
+                if (Plan.Crewed && t.name == ProceduralSpacecraftView.DockedLunarModuleName) _dockedLm = t;
+                else if (Plan.Crewed && t.name == "Module_pl_apollo_alsep") _dockedAlsep = t;
+                else if (!Plan.Crewed && t.name == "Module_pl_rover") _stowedRover = t;
+            }
         _model.gameObject.SetActive(false);
         _rocket = BuildRocket(_craft, lv);
         _flash = Prim(PrimitiveType.Sphere, _craft, Vector3.zero, Vector3.one, Vector3.zero,
@@ -254,19 +269,25 @@ public class TrajectorySimulator : MonoBehaviour
             _rover.SetParent(_root.transform, false);
             if (Plan.Crewed)
             {
-                // miniature Lunar Module: gold descent stage on four legs, grey ascent cabin
+                // Miniature Lunar Module: gold octagonal descent stage with an engine bell on four legs, dark ascent
+                // cabin. Scaled down as a whole so it looks right against the Moon (radius 1.7 in sim units).
+                _rover.localScale = Vector3.one * 0.42f;
                 var gold = PhaseXMaterials.Lit(new Color(0.86f, 0.64f, 0.2f), 0.8f, 0.9f);
                 var grey = PhaseXMaterials.Lit(new Color(0.55f, 0.57f, 0.6f), 0.5f, 0.6f);
-                Prim(PrimitiveType.Cylinder, _rover, new Vector3(0, 0.1f, 0), new Vector3(0.24f, 0.05f, 0.24f), Vector3.zero, gold);
-                Prim(PrimitiveType.Cube, _rover, new Vector3(0, 0.22f, 0), new Vector3(0.16f, 0.14f, 0.16f), new Vector3(0, 45, 0), grey);
+                var cabin = PhaseXMaterials.Lit(new Color(0.2f, 0.21f, 0.24f), 0.5f, 0.6f);
+                Prim(PrimitiveType.Cylinder, _rover, new Vector3(0, 0.1f, 0), new Vector3(0.24f, 0.05f, 0.24f), new Vector3(0, 22.5f, 0), gold).name = "DescentStage";
+                Prim(PrimitiveType.Cube, _rover, new Vector3(0, 0.1f, 0), new Vector3(0.2f, 0.09f, 0.2f), new Vector3(0, 45, 0), gold).name = "DescentStageOct";
+                Prim(PrimitiveType.Cylinder, _rover, new Vector3(0, 0.035f, 0), new Vector3(0.09f, 0.025f, 0.09f), Vector3.zero, cabin).name = "DescentBell";
+                Prim(PrimitiveType.Cube, _rover, new Vector3(0, 0.22f, 0), new Vector3(0.16f, 0.14f, 0.16f), new Vector3(0, 45, 0), cabin).name = "AscentStage";
                 for (int i = 0; i < 4; i++)
                 {
                     Vector3 d = Quaternion.Euler(0, i * 90f + 45f, 0) * Vector3.forward;
-                    Prim(PrimitiveType.Cylinder, _rover, d * 0.15f + new Vector3(0, 0.05f, 0), new Vector3(0.02f, 0.08f, 0.02f), new Vector3(d.z * 35f, 0, -d.x * 35f), grey);
-                    Prim(PrimitiveType.Cylinder, _rover, d * 0.2f, new Vector3(0.06f, 0.006f, 0.06f), Vector3.zero, gold);
+                    Prim(PrimitiveType.Cylinder, _rover, d * 0.15f + new Vector3(0, 0.05f, 0), new Vector3(0.02f, 0.08f, 0.02f), new Vector3(d.z * 35f, 0, -d.x * 35f), grey).name = "Leg_" + i;
+                    Prim(PrimitiveType.Cylinder, _rover, d * 0.2f, new Vector3(0.06f, 0.006f, 0.06f), Vector3.zero, gold).name = "Foot_" + i;
                 }
-                Prim(PrimitiveType.Sphere, _rover, new Vector3(0, 0.32f, 0), Vector3.one * 0.07f, Vector3.zero,
-                    PhaseXMaterials.Lit(new Color(0.3f, 1f, 0.6f), 0.5f, 0f, new Color(0.4f, 1.6f, 0.8f)));
+                // tracking beacon just above the ascent stage: kept a little larger than true scale so the lander can be found
+                Prim(PrimitiveType.Sphere, _rover, new Vector3(0, 0.34f, 0), Vector3.one * 0.06f, Vector3.zero,
+                    PhaseXMaterials.Lit(new Color(0.3f, 1f, 0.6f), 0.5f, 0f, new Color(0.4f, 1.6f, 0.8f))).name = "RoverDot";
             }
             else
             {
@@ -459,6 +480,11 @@ public class TrajectorySimulator : MonoBehaviour
             _linkEarth.SetPosition(0, pos);
             _linkEarth.SetPosition(1, pos.normalized * LunarFlightPlan.EarthR);
         }
+        // One lander at a time: while the separate lander model is out (descent and surface stay), the docked copy on
+        // the orbiting spacecraft is hidden. Stepping back before the separation docks it again.
+        if (_dockedLm != null && _dockedLm.gameObject.activeSelf == st.RoverVisible) _dockedLm.gameObject.SetActive(!st.RoverVisible);
+        if (_dockedAlsep != null && _dockedAlsep.gameObject.activeSelf == st.RoverVisible) _dockedAlsep.gameObject.SetActive(!st.RoverVisible);
+        if (_stowedRover != null && _stowedRover.gameObject.activeSelf == st.RoverVisible) _stowedRover.gameObject.SetActive(!st.RoverVisible);
         if (_rover != null)
         {
             _rover.gameObject.SetActive(st.RoverVisible);
