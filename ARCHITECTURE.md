@@ -1,7 +1,7 @@
 # PHASE X — Architecture
 
 PHASE X is a NASA Space Apps mission-design game. Everything is built from code at Play time: no prefabs, models,
-fonts, textures or material assets. The only data assets are the part and mission catalogs, `spacecraft_parts.json` and `missions.json`. This document describes how the pieces fit, with the **3D Mission Control
+fonts, textures or material assets. The only assets are the part and mission catalogs (`spacecraft_parts.json`, `missions.json`) and three shader template materials (section 1c). This document describes how the pieces fit, with the **3D Mission Control
 station** (added after Phase 3) in detail.
 
 ## 1. Layers
@@ -143,6 +143,24 @@ validator does not.
 
 **Header:** up to four missions get one row of large buttons; more become a two-row grid
 (`PhaseXRuntimeUI.ScenarioButtonRect`), which stays right of the mission title for up to 12 missions.
+
+## 1c. Shaders in player builds — `Resources/Materials`
+
+Every material is created at runtime, so no scene or prefab references the URP shaders. Unity only ships shaders (and
+shader variants) that some asset in the build uses, which made a built game render **everything magenta**.
+
+Three template materials in `Assets/_PhaseX/Resources/Materials` fix that. `PhaseXMaterials` copies them instead of
+calling `Shader.Find`:
+
+| Template | Pulls into the build |
+|---|---|
+| `PhaseX_LitTemplate.mat` | URP Lit |
+| `PhaseX_LitEmissiveTemplate.mat` | URP Lit with the `_EMISSION` variant (all glowing parts) |
+| `PhaseX_UnlitTemplate.mat` | URP Unlit |
+
+Do not delete them, and do not move them out of a `Resources` folder. If the game ever needs another shader or keyword at
+runtime, add a template material that uses it. `Sprites/Default` (lines, particles, glass) and the built-in font shader are
+always included by Unity and need no template.
 
 ## 2. Boot sequence
 

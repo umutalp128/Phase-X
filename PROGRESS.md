@@ -360,6 +360,23 @@ The numbers as specified left two missions impossible with the current part cata
 - **Not verified:** how the header grid, the "MISSION PICK" tag and the recommended-instrument lines actually look
   (OnGUI is not captured in batch mode), and the F5–F9 keys with a real keyboard.
 
+## Fix: Standalone Build Rendered Everything Magenta ✅
+
+**Cause:** all materials are created at runtime with `Shader.Find`, and no asset referenced the URP Lit shader, so Unity
+stripped it from player builds. In a build `Shader.Find` returned nothing and every object fell back to an unsupported shader.
+The editor always has every shader, which is why Play mode looked fine.
+
+**Fix:** three template materials in `Assets/_PhaseX/Resources/Materials` (Lit, Lit + emission, Unlit) are now copied by
+`PhaseXMaterials`, which pulls those shaders and variants into the build. See `ARCHITECTURE.md` section 1c.
+
+### Verified (2026-11-14)
+- Built a Linux standalone player from the command line (succeeded, 98 MB) and ran the executable.
+- Its log shows the catalogs loading (25 parts, 9 missions) and the shaders in use: URP Lit, Sprites/Default, GUI/Text.
+- A screenshot rendered by the built executable shows the station correctly lit, with glowing strips and readable 3D text.
+- Not tested: a Windows build, and the build's on-screen GUI and input (the test ran the player without a window).
+- The player log still warns that three URP post-processing shaders (two depth-of-field, Panini projection) are stripped.
+  The game does not use those effects.
+
 ### Next phases (planned)
 - (On hold) Phase 4: 4-player co-op role ownership and segment sign-off; campaign unlocks; save progress.
 - (On hold) Phase 5: polish, audio, accessibility, standalone builds, demo script.

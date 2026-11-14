@@ -2,20 +2,34 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// Runtime materials and procedural textures. Prefers URP shaders and always falls back to the
-/// pipeline's default primitive material, so the 3D view never needs material assets.
+/// Runtime materials and procedural textures. All materials are created in code from three template
+/// materials in Resources/Materials, which exist only so the URP shaders are included in player builds.
 /// </summary>
 public static class PhaseXMaterials
 {
-    static Material _lit, _unlit;
+    static Material _lit, _litEmissive, _unlit;
     static bool _unlitSearched;
     static readonly Dictionary<string, Material> Cache = new Dictionary<string, Material>();
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     static void ResetStatics()
     {
-        _lit = null; _unlit = null; _unlitSearched = false;
+        _lit = null; _litEmissive = null; _unlit = null; _unlitSearched = false;
         Cache.Clear();
+    }
+
+    // Every material is created at runtime, so no scene or prefab references the URP shaders. A player build only
+    // ships shaders (and shader variants) that some asset uses, so three tiny template materials live in
+    // Resources/Materials to pull the Lit, Lit + emission and Unlit shaders into the build. Without them a built
+    // game renders everything magenta. Shader.Find is the fallback and only works in the editor.
+    static Material LoadTemplate(string resourceName, string shaderName)
+    {
+        var template = Resources.Load<Material>("Materials/" + resourceName);
+        if (template != null && template.shader != null && template.shader.isSupported) return new Material(template);
+        Shader s = Shader.Find(shaderName);
+        if (s != null) return new Material(s);
+        Debug.LogError($"[PhaseX] Shader \"{shaderName}\" is missing: Resources/Materials/{resourceName}.mat was not found and the shader is not in this build. Objects will render magenta.");
+        return null;
     }
 
     static Material LitTemplate
@@ -23,16 +37,31 @@ public static class PhaseXMaterials
         get
         {
             if (_lit != null) return _lit;
-            Shader s = Shader.Find("Universal Render Pipeline/Lit");
-            if (s == null) s = Shader.Find("Standard");
-            if (s != null) _lit = new Material(s);
-            else
+            _lit = LoadTemplate("PhaseX_LitTemplate", "Universal Render Pipeline/Lit");
+            if (_lit == null)
             {
-                var tmp = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                _lit = new Material(tmp.GetComponent<Renderer>().sharedMaterial);
-                Object.Destroy(tmp);
+                Shader s = Shader.Find("Standard");
+                if (s != null) _lit = new Material(s);
+                else
+                {
+                    var tmp = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                    _lit = new Material(tmp.GetComponent<Renderer>().sharedMaterial);
+                    if (Application.isPlaying) Object.Destroy(tmp); else Object.DestroyImmediate(tmp);
+                }
             }
             return _lit;
+        }
+    }
+
+    /// <summary>Lit with the emission keyword already on, so the emissive shader variant is part of the build.</summary>
+    static Material LitEmissiveTemplate
+    {
+        get
+        {
+            if (_litEmissive != null) return _litEmissive;
+            var template = Resources.Load<Material>("Materials/PhaseX_LitEmissiveTemplate");
+            _litEmissive = template != null && template.shader != null && template.shader.isSupported ? new Material(template) : new Material(LitTemplate);
+            return _litEmissive;
         }
     }
 
@@ -43,8 +72,13 @@ public static class PhaseXMaterials
             if (!_unlitSearched)
             {
                 _unlitSearched = true;
-                Shader s = Shader.Find("Universal Render Pipeline/Unlit");
-                if (s != null) _unlit = new Material(s);
+                var template = Resources.Load<Material>("Materials/PhaseX_UnlitTemplate");
+                if (template != null && template.shader != null && template.shader.isSupported) _unlit = new Material(template);
+                else
+                {
+                    Shader s = Shader.Find("Universal Render Pipeline/Unlit");
+                    if (s != null) _unlit = new Material(s);
+                }
             }
             return _unlit;
         }
@@ -67,7 +101,7 @@ public static class PhaseXMaterials
     {
         string key = $"L{color}{smoothness}{metallic}{emission}";
         if (Cache.TryGetValue(key, out var c) && c != null) return c;
-        var m = new Material(LitTemplate) { name = "PhaseX_Lit" };
+        var m = new Material(emission.HasValue ? LitEmissiveTemplate : LitTemplate) { name = "PhaseX_Lit" };
         SetColor(m, color);
         if (m.HasProperty("_Smoothness")) m.SetFloat("_Smoothness", smoothness);
         if (m.HasProperty("_Glossiness")) m.SetFloat("_Glossiness", smoothness);
@@ -84,7 +118,7 @@ public static class PhaseXMaterials
         if (Cache.TryGetValue(key, out var c) && c != null) return c;
         Material m;
         if (UnlitTemplate != null) { m = new Material(UnlitTemplate); SetColor(m, color); }
-        else { m = new Material(LitTemplate); SetColor(m, Color.black); SetEmission(m, color); }
+        else { m = new Material(LitEmissiveTemplate); SetColor(m, Color.black); SetEmission(m, color); }
         m.name = "PhaseX_Unlit";
         Cache[key] = m;
         return m;
