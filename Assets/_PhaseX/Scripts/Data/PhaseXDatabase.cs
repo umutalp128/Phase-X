@@ -156,7 +156,7 @@ public static class PhaseXDatabase
                            "imaging camera in Low Earth Orbit and carries enough thrust to deorbit at end of life. " +
                            "Every kilogram and every dollar counts.",
                 MaxBudget = 20f, TargetScience = 25f, RequiredDeltaV = 30f, RequiredLifetimeMonths = 6f, MinReliability = 0.80f,
-                SolarEfficiency = 1f, CheckDataBottleneck = false, CheckDeltaV = true, EnableCrisisEvents = false,
+                SolarEfficiency = 1f, CheckDataBottleneck = false, CheckDeltaV = true, EnableCrisisEvents = true,
                 AllowedOrbitIds = new[] { "orb_leo" }
             },
             new MissionScenario
@@ -166,8 +166,8 @@ public static class PhaseXDatabase
                 Briefing = "Ice in the Moon's permanently shadowed craters could supply Artemis astronauts with water, air " +
                            "and rocket fuel. Put an orbiter in Low Lunar Polar Orbit and map it. Near the pole the Sun " +
                            "skims the horizon (solar at 60%), and every image must squeeze through your radio link.",
-                MaxBudget = 160f, TargetScience = 60f, RequiredDeltaV = 100f, RequiredLifetimeMonths = 12f, MinReliability = 0.75f,
-                SolarEfficiency = 0.6f, CheckDataBottleneck = true, CheckDeltaV = true, EnableCrisisEvents = false,
+                MaxBudget = 160f, TargetScience = 55f, RequiredDeltaV = 100f, RequiredLifetimeMonths = 12f, MinReliability = 0.75f,
+                SolarEfficiency = 0.6f, CheckDataBottleneck = true, CheckDeltaV = true, EnableCrisisEvents = true,
                 AllowedOrbitIds = new[] { "orb_llo" }
             },
             new MissionScenario
@@ -188,7 +188,7 @@ public static class PhaseXDatabase
                 Briefing = "All parts unlocked and a generous budget. Experiment freely and watch each choice ripple " +
                            "through all six resources.",
                 MaxBudget = 1000f, TargetScience = 100f, RequiredDeltaV = 0f, RequiredLifetimeMonths = 12f, MinReliability = 0.5f,
-                SolarEfficiency = 1f, CheckDataBottleneck = true, CheckDeltaV = true, EnableCrisisEvents = false,
+                SolarEfficiency = 1f, CheckDataBottleneck = true, CheckDeltaV = true, EnableCrisisEvents = true,
                 AllowedOrbitIds = new string[0]
             },
         };

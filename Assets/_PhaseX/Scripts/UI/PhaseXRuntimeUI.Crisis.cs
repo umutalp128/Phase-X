@@ -70,7 +70,7 @@ public partial class PhaseXRuntimeUI
         string[] values =
         {
             $"{(live.PowerMargin >= 0 ? "+" : "")}{live.PowerMargin:0} W",
-            $"{TrajectorySimulator.Instance.DvRemaining:0} m/s",
+            $"{Mathf.Max(0f, TrajectorySimulator.Instance.DvRemaining):0} m/s",
             $"{live.Science:0} pts ({live.SciencePct:0}%)",
             $"{live.Reliability * 100f:0.0}%",
             $"{Mathf.Min(live.LifetimeMonths, 999f):0} mo",

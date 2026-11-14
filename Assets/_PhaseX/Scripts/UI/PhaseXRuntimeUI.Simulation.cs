@@ -142,7 +142,7 @@ public partial class PhaseXRuntimeUI
         GUI.Label(new Rect(box.x + 12, box.y + 10, box.width - 24, box.height - 20), sim.CurrentNote, ns);
 
         var rb = new Rect(16, SimRightRect.height - 158, w - 32, 66);
-        if (GUI.Button(rb, sim.Complete ? "ENGINEERING REPORT\n<size=12>[ESC] / [ENTER]</size>" : "SKIP TO REPORT\n<size=12>[ESC] / [ENTER]</size>",
+        if (GUI.Button(rb, sim.Complete ? "ENGINEERING REPORT\n<size=12>[ESC] / [ENTER]</size>" : "STATUS REPORT\n<size=12>[ESC] / [ENTER]</size>",
                 sim.Complete ? _launchReady : _btn))
         {
             _reportAt = -1f;

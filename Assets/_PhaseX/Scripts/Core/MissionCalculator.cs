@@ -239,7 +239,7 @@ public class MissionCalculator : MonoBehaviour
             float money = Mathf.Clamp01((sc.MaxBudget - cost) / Mathf.Max(1f, sc.MaxBudget) * 2f) * 15f;
             float rel = Mathf.Clamp01((r.Reliability - sc.MinReliability) / Mathf.Max(0.01f, 1f - sc.MinReliability)) * 10f;
             r.Score = 60f + sci + money + rel;
-            r.Stars = 1 + (r.Score >= 72f ? 1 : 0) + (r.Score >= 84f ? 1 : 0);
+            r.Stars = StarsFor(r.Score);
             if (cost < sc.MaxBudget * 0.6f) r.Advice.Add("Excellent cost control - review boards love budget margin.");
             if (net / Mathf.Max(1f, r.PowerGenerated) < 0.15f) r.Advice.Add("Power margin is under 15%. Real missions keep 20-30% for aging panels.");
             if (life < sc.RequiredLifetimeMonths * 1.5f) r.Advice.Add("Lifetime margin is thin: an extended mission would be impossible.");
@@ -247,6 +247,9 @@ public class MissionCalculator : MonoBehaviour
         }
         return r;
     }
+
+    /// <summary>Stars for a successful mission: 1 for flying, 2 from 72 points, 3 from 84.</summary>
+    public static int StarsFor(float score) => 1 + (score >= 72f ? 1 : 0) + (score >= 84f ? 1 : 0);
 
     static string GetName(string id) => PhaseXDatabase.GetPart(id)?.Name ?? id;
 

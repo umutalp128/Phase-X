@@ -61,7 +61,7 @@ Science target, destination orbit and minimum reliability (product of part relia
 | Key | Scenario | Budget | Science | Lifetime | Notes |
 |---|---|---|---|---|---|
 | F1 | L1 LEO / Lunar Prep CubeSat | $20M | 25 | 6 mo | Level-1 parts; data check off |
-| F2 | L2 Lunar South Pole Ice | $160M | 60 | 12 mo | Low lunar polar orbit, solar at 60%, data bottleneck |
+| F2 | L2 Lunar South Pole Ice | $160M | 55 | 12 mo | Low lunar polar orbit, solar at 60%, data bottleneck |
 | F3 | L3 Far-Side Lander | $320M | 90 | 6 mo | Halo-orbit relay, 1100 m/s landing, crisis flag (later phase) |
 | F4 | Sandbox | $1B | 100 | 12 mo | Every part unlocked |
 
@@ -159,6 +159,37 @@ the decision made in each crisis, and mission health after the flight.
   - Effects chained: on L3 the reroute burn left 91 m/s after the rover's 1,100 m/s descent.
   - Final scores came out at 72–88, and the report opened with the crisis summary.
 - Not yet checked by a person: the OnGUI Red Alert popup layout (OnGUI can't be captured in batch mode).
+
+## Phase 3.1 — Review Fixes (flow loopholes, crisis consequences) ✅
+
+A read-through of the Phase 1–3 code found these issues; all are fixed.
+
+**Flow**
+- A report opened mid-flight now reads **FLIGHT IN PROGRESS** with a provisional score and no stars. **NEXT MISSION** only
+  appears once the flight is complete and every Red Alert is answered, so crises can no longer be skipped. Enter in that
+  report returns to the flight instead of loading the next level.
+- The design is frozen (mouse and keys) during the 1.3 s between LAUNCH and the flight or scrub report.
+
+**Crisis consequences**
+- Crisis damage now counts: `CrisisEventManager.RequirementPenalty()` removes score when the flight ends below the science
+  target (up to -10, proportional), minimum reliability (-6) or required lifetime (-6). The report lists each one as a
+  red POST-FLIGHT finding and shows `DESIGN + CRISIS RESPONSE - REQUIREMENTS = FINAL SCORE`.
+- Crisis choices can no longer push delta-V below zero, so **BURN SHORTFALL** only fires when a planned burn really comes up
+  short. Options that spend delta-V warn when burns still ahead (`TrajectorySimulator.DvPlannedAhead`) would be left short.
+- The micrometeoroid text no longer mentions a propellant leak on a craft without propulsion.
+
+**Data and text**
+- `EnableCrisisEvents` is now true on every scenario and honoured by the crisis manager; the briefing announces Red Alerts.
+- Removed the stale "crisis management arrives in the next phase" lines.
+- L2 science target lowered from 60 to 55 so the reference design has margin.
+- Star thresholds live in one place: `MissionCalculator.StarsFor()`.
+
+### Verified (2026-11-14)
+- Zero compiler errors; batch play-mode test flew L1, L2, L3 and a no-propulsion Sandbox craft with zero runtime errors.
+- Mid-flight Enter in the report kept the scenario and the flight on all four; all crises fired (2 / 3 / 3 / 2).
+- Penalties applied as designed: L2 lost 1.5 for science at 51 of 55; Sandbox lost 6 for lifetime at 9 of 12 months.
+- Not exercised: the delta-V warning text (no tested path left a later burn short), and all OnGUI layouts (the new report
+  labels included), which batch mode cannot capture.
 
 ### Next phases (planned)
 - Phase 4: 4-player co-op role ownership and segment sign-off; campaign unlocks; save progress.

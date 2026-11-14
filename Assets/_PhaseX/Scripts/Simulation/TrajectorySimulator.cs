@@ -38,6 +38,17 @@ public class TrajectorySimulator : MonoBehaviour
     public void SpendDv(float mps) => DvRemaining -= mps;
     public void AddLog(string text) => AddLog(State.MetHours, text);
 
+    /// <summary>Delta-V that the burns still ahead in the flight plan will need.</summary>
+    public float DvPlannedAhead
+    {
+        get
+        {
+            float sum = 0f;
+            if (Plan != null) for (int i = _lastSegment + 1; i < Plan.Segments.Count; i++) sum += Plan.Segments[i].DvCost;
+            return sum;
+        }
+    }
+
     Transform _flash;
     float _flashT = -1f;
     public void TriggerAlertFlash(Color c)

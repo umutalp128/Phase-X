@@ -74,6 +74,8 @@ public class CrisisEventManager : MonoBehaviour
     public LiveMissionStats Live { get; private set; }
     public readonly List<CrisisEvent> History = new List<CrisisEvent>();
     public int ScheduledCount => _schedule.Count;
+    /// <summary>True once every scheduled crisis has fired and been acknowledged.</summary>
+    public bool AllHandled => History.Count >= _schedule.Count;
 
     TrajectorySimulator _sim;
     MissionCalculator _calc;
@@ -128,6 +130,7 @@ public class CrisisEventManager : MonoBehaviour
 
         // Schedule 2-3 crises at dramatic moments of this flight profile.
         _schedule.Clear();
+        if (!_scenario.EnableCrisisEvents) return;
         var plan = _sim.Plan;
         if (plan.Mode == FlightMode.LeoOnly)
         {
@@ -272,8 +275,12 @@ public class CrisisEventManager : MonoBehaviour
 
     void Dv(CrisisResult r, float mps)
     {
-        _sim.SpendDv(mps);
-        r.Effects.Add(new CrisisEffect($"-{mps:0} m/s delta-V (now {_sim.DvRemaining:0} m/s)", false));
+        // Never spend more than the tanks hold: a negative balance is reserved for a planned burn that came up short.
+        float spent = Mathf.Min(mps, Mathf.Max(0f, _sim.DvRemaining));
+        _sim.SpendDv(spent);
+        r.Effects.Add(new CrisisEffect(spent < mps
+            ? $"-{spent:0} m/s delta-V: the tanks are now empty"
+            : $"-{mps:0} m/s delta-V (now {_sim.DvRemaining:0} m/s)", false));
     }
 
     void Budget(CrisisResult r, float millions)
@@ -292,6 +299,16 @@ public class CrisisEventManager : MonoBehaviour
     {
         Live.ScoreDelta += pts;
         r.Effects.Add(new CrisisEffect($"{(pts >= 0 ? "+" : "")}{pts:0} mission score (crisis response)", pts >= 0));
+    }
+
+    /// <summary>Warning text when spending this much delta-V would leave a burn still ahead in the flight plan short.</summary>
+    string DvWarning(float cost)
+    {
+        float ahead = _sim.DvPlannedAhead;
+        float left = Mathf.Max(0f, _sim.DvRemaining - cost);
+        return ahead > 0f && left < ahead
+            ? $" WARNING: burns still ahead need {ahead:0} m/s, and this leaves only {left:0} m/s."
+            : "";
     }
 
     bool Roll(float pSuccess) => _rng.NextDouble() < pSuccess;
@@ -458,8 +475,9 @@ public class CrisisEventManager : MonoBehaviour
         {
             Type = CrisisType.Micrometeorite,
             Title = "MICROMETEOROID STRIKE",
-            Description = $"A dust grain smaller than a grain of sand, travelling about 20 km/s, punched through {hit} and nicked a " +
-                          "propellant line. Telemetry shows a power drop and a slow pressure leak.",
+            Description = $"A dust grain smaller than a grain of sand, travelling about 20 km/s, punched through {hit}" +
+                          (propulsion ? " and nicked a propellant line. Telemetry shows a power drop and a slow pressure leak."
+                                      : ". Telemetry shows a power drop and a short on the damaged string."),
             Lesson = "Real world: the ISS solar arrays and the Canadarm2 robotic arm carry visible micrometeoroid holes. " +
                      "Spacecraft use layered Whipple shields to shatter impactors before they reach critical parts."
         };
@@ -467,10 +485,14 @@ public class CrisisEventManager : MonoBehaviour
         ev.Options.Add(new CrisisOption
         {
             Title = "ISOLATE THE DAMAGE",
-            Tradeoff = "Switch off the damaged power string and close the valve upstream of the leak. Permanent -20% power, small propellant loss. No further risk.",
+            Tradeoff = propulsion
+                ? "Switch off the damaged power string and close the valve upstream of the leak. Permanent -20% power, -15 m/s of propellant. No further risk." + DvWarning(15f)
+                : "Switch off the damaged power string. Permanent -20% power. No further risk.",
             Resolve = () =>
             {
-                var r = new CrisisResult { Text = "Damaged string isolated and leak sealed. The spacecraft is stable on reduced power." };
+                var r = new CrisisResult { Text = propulsion
+                    ? "Damaged string isolated and leak sealed. The spacecraft is stable on reduced power."
+                    : "Damaged string isolated. The spacecraft is stable on reduced power." };
                 PowerGenPct(r, -20f);
                 if (propulsion) Dv(r, 15f);
                 Score(r, 2f);
@@ -482,9 +504,9 @@ public class CrisisEventManager : MonoBehaviour
         ev.Options.Add(new CrisisOption
         {
             Title = "REROUTE POWER & BURN THE LEAKING PROPELLANT",
-            Tradeoff = $"Cross-strap power through the backup bus (only -5% power) and use the leaking propellant for an orbit-trim burn: -{leakDv:0} m/s delta-V, -3% reliability.",
+            Tradeoff = $"Cross-strap power through the backup bus (only -5% power) and use the leaking propellant for an orbit-trim burn: -{leakDv:0} m/s delta-V, -3% reliability." + DvWarning(leakDv),
             Available = propulsion && _sim.DvRemaining >= leakDv,
-            UnavailableReason = propulsion ? $"Needs {leakDv:0} m/s of delta-V margin. You have {_sim.DvRemaining:0} m/s." : "No propulsion system on board.",
+            UnavailableReason = propulsion ? $"Needs {leakDv:0} m/s of delta-V margin. You have {Mathf.Max(0f, _sim.DvRemaining):0} m/s." : "No propulsion system on board.",
             Resolve = () =>
             {
                 var r = new CrisisResult { Text = "Backup bus online and the leaking propellant put to use. Power is almost fully kept." };
@@ -498,19 +520,23 @@ public class CrisisEventManager : MonoBehaviour
         {
             Title = "MONITOR ONLY: trust the design margins",
             Tradeoff = $"Do nothing and watch the telemetry. {pOk * 100f:0}% chance the damage stays contained (based on your reliability). " +
-                       "If it spreads: heavy power and lifetime loss.",
+                       "If it spreads: heavy power and lifetime loss" + (propulsion ? ", and 40 m/s of propellant vented." : "."),
             Resolve = () =>
             {
                 var r = new CrisisResult();
                 if (Roll(pOk))
                 {
-                    r.Text = "The leak self-sealed as the propellant froze and the power drop stabilized. Lucky, and well-designed.";
+                    r.Text = propulsion
+                        ? "The leak self-sealed as the propellant froze and the power drop stabilized. Lucky, and well-designed."
+                        : "The short burned itself out and the power drop stabilized. Lucky, and well-designed.";
                     PowerGenPct(r, -3f); Score(r, 1f);
                 }
                 else
                 {
                     r.Success = false;
-                    r.Text = "The short spread to a neighbouring string and the leak kept venting. Engineers recovered the spacecraft, but at a cost.";
+                    r.Text = propulsion
+                        ? "The short spread to a neighbouring string and the leak kept venting. Engineers recovered the spacecraft, but at a cost."
+                        : "The short spread to a neighbouring string. Engineers recovered the spacecraft, but at a cost.";
                     PowerGenPct(r, -35f); Lifetime(r, -Mathf.Round(Live.LifetimeMonths * 0.4f));
                     if (propulsion) Dv(r, 40f);
                     Score(r, -8f);
@@ -523,5 +549,34 @@ public class CrisisEventManager : MonoBehaviour
 
     // ================================================================== reporting
 
-    public float FinalScore(float designScore) => Mathf.Clamp(designScore + (Live?.ScoreDelta ?? 0f), 0f, 100f);
+    /// <summary>
+    /// Score lost because crisis damage pushed the mission below its requirements (science target, minimum reliability,
+    /// required lifetime). Optionally lists each finding for the engineering report.
+    /// </summary>
+    public float RequirementPenalty(List<string> findings = null)
+    {
+        if (Live == null || _scenario == null) return 0f;
+        float total = 0f;
+        float target = _scenario.TargetScience;
+        if (target > 0f && Live.Science < target)
+        {
+            float p = Mathf.Min(10f, 20f * (1f - Live.Science / target));
+            total += p;
+            findings?.Add($"Science return fell to {Live.Science:0} of the {target:0} pts target (-{p:0.#} score).");
+        }
+        if (Live.Reliability < Live.MinReliability)
+        {
+            total += 6f;
+            findings?.Add($"Reliability ended at {Live.Reliability * 100f:0.0}%, below the {Live.MinReliability * 100f:0}% requirement (-6 score).");
+        }
+        if (Live.LifetimeMonths < Live.RequiredLifetime)
+        {
+            total += 6f;
+            findings?.Add($"Lifetime fell to {Live.LifetimeMonths:0} of the {Live.RequiredLifetime:0} months required (-6 score).");
+        }
+        return total;
+    }
+
+    public float FinalScore(float designScore) =>
+        Mathf.Clamp(designScore + (Live?.ScoreDelta ?? 0f) - RequirementPenalty(), 0f, 100f);
 }

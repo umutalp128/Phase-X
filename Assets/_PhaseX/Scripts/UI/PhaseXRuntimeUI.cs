@@ -35,6 +35,21 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
     float _reportAt = -1f;
     float _simStartAt = -1f;
 
+    /// <summary>The 1.3 s between pressing LAUNCH and the flight/report: the design is frozen.</summary>
+    bool LaunchPending => !SimActive && (_reportAt > 0f || _simStartAt > 0f);
+
+    /// <summary>A launched mission whose flight (or one of its crises) is still unfinished: no success, no next level yet.</summary>
+    bool FlightUnfinished
+    {
+        get
+        {
+            var r = _calc.LastLaunchReport;
+            if (r == null || !r.MissionReady || !SimActive) return false;
+            var cm = CrisisEventManager.Instance;
+            return !Sim.Complete || (cm != null && !cm.AllHandled);
+        }
+    }
+
     // ---- theme
     static readonly Color Slate = new Color(0.055f, 0.075f, 0.115f, 0.94f);
     static readonly Color Ink = new Color(0.02f, 0.03f, 0.055f, 0.97f);
@@ -103,6 +118,8 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
             Sim.Begin(_calc.CurrentScenario, _calc.LastLaunchReport ?? _calc.Report, _calc.SelectedParts);
         }
 
+        if (LaunchPending) return;
+
         if (_modal == Modal.Briefing)
         {
             if (PhaseXInput.Down(PhaseXInput.K.Enter) || PhaseXInput.Down(PhaseXInput.K.Space) || PhaseXInput.Down(PhaseXInput.K.Escape))
@@ -155,7 +172,8 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
     {
         var r = _calc.LastLaunchReport;
         var next = _calc.NextScenario();
-        if (r != null && r.MissionReady && next != null) _calc.LoadScenario(next);
+        if (FlightUnfinished) _modal = Modal.None;   // keep flying: the next mission unlocks when the flight is done
+        else if (r != null && r.MissionReady && next != null) _calc.LoadScenario(next);
         else CloseReport();
     }
 
@@ -182,7 +200,7 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
         // more than once per frame): while a modal is open, input events are hidden from the workstation underneath.
         bool modal = ModalOpen;
         EventType original = Event.current.type;
-        bool blockInput = modal && (Event.current.isMouse || Event.current.isKey || original == EventType.ScrollWheel);
+        bool blockInput = (modal || LaunchPending) && (Event.current.isMouse || Event.current.isKey || original == EventType.ScrollWheel);
         if (blockInput) Event.current.type = EventType.Ignore;
 
         DrawHeader();
@@ -572,7 +590,7 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
         if (sc.CheckDeltaV) req.Add($"Delta-V  {Col(sc.RequiredDeltaV.ToString("0") + " m/s + orbit insertion", Cyan)}");
         req.Add(sc.CheckDataBottleneck ? "Data  " + Col("radio must keep up with the instruments", Cyan) : "Data  " + Col("not checked at this level", Dim));
         if (sc.SolarEfficiency < 1f) req.Add("Sunlight  " + Col($"solar panels at {sc.SolarEfficiency * 100f:0}%", Amber));
-        if (sc.EnableCrisisEvents) req.Add("Crisis events  " + Col("enabled (CML 4 operations, later phase)", Dim));
+        if (sc.EnableCrisisEvents) req.Add("Crisis events  " + Col("expect Red Alerts during the flight", Amber));
 
         var rs = Style(_label, 15, TextAnchor.UpperLeft);
         for (int i = 0; i < req.Count; i++)
@@ -592,13 +610,18 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
         float w = 1080, h = 780;
         Fill(new Rect(0, 0, w, 4), r.MissionReady ? Green : Red);
         GUI.Label(new Rect(40, 22, w - 80, 22), Col(r.MissionReady ? PhaseXDatabase.CmlTitle(CmlPhase.Cml4LunarOps) + "  //  POST-MISSION ENGINEERING REPORT" : "CML 3  //  LAUNCH SCRUBBED - ROOT-CAUSE ANALYSIS", r.MissionReady ? Amber : Red), Style(_labelBold, 15, TextAnchor.UpperLeft));
-        GUI.Label(new Rect(40, 48, w - 300, 44), r.MissionReady ? "MISSION SUCCESS" : "MISSION NOT READY", Style(_title, 34, TextAnchor.UpperLeft));
+        bool inFlight = FlightUnfinished;
+        GUI.Label(new Rect(40, 48, w - 300, 44), !r.MissionReady ? "MISSION NOT READY" : inFlight ? "FLIGHT IN PROGRESS" : "MISSION SUCCESS", Style(_title, 34, TextAnchor.UpperLeft));
         var crisisMgr = CrisisEventManager.Instance;
         bool flown = r.MissionReady && SimActive && crisisMgr != null && crisisMgr.Live != null;
+        var findings = new List<string>();
+        float penalty = flown ? crisisMgr.RequirementPenalty(findings) : 0f;
         float finalScore = flown ? crisisMgr.FinalScore(r.Score) : r.Score;
-        int stars = !r.MissionReady ? 0 : 1 + (finalScore >= 72f ? 1 : 0) + (finalScore >= 84f ? 1 : 0);
+        int stars = !r.MissionReady || inFlight ? 0 : MissionCalculator.StarsFor(finalScore);
         string scoreText = flown
-            ? $"    DESIGN {r.Score:0}  {(crisisMgr.Live.ScoreDelta >= 0 ? "+" : "")}{crisisMgr.Live.ScoreDelta:0} CRISIS RESPONSE  =  FINAL SCORE {finalScore:0} / 100"
+            ? $"    DESIGN {r.Score:0}  {(crisisMgr.Live.ScoreDelta >= 0 ? "+" : "")}{crisisMgr.Live.ScoreDelta:0} CRISIS RESPONSE" +
+              (penalty > 0f ? $"  -{penalty:0.#} REQUIREMENTS" : "") +
+              $"  =  {(inFlight ? "SCORE SO FAR" : "FINAL SCORE")} {finalScore:0} / 100"
             : $"    SCORE {r.Score:0} / 100";
         GUI.Label(new Rect(40, 94, w - 80, 24), Col(sc.Title.ToUpperInvariant(), Cyan) + Col(scoreText, TextC), Style(_labelBold, 16, TextAnchor.UpperLeft));
 
@@ -614,7 +637,7 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
 
         // resource summary table
         float y = 138;
-        GUI.Label(new Rect(40, y, 400, 22), "RESOURCE SUMMARY", _h2);
+        GUI.Label(new Rect(40, y, 470, 22), flown ? "RESOURCE SUMMARY  " + Col("(design at launch)", Dim) : "RESOURCE SUMMARY", _h2);
         y += 28;
         foreach (var g in r.Gauges)
         {
@@ -636,6 +659,7 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
         var items = r.MissionReady
             ? (r.Advice.Count > 0 ? new List<string>(r.Advice) : new List<string> { "Flawless design. The spacecraft reaches lunar operations with healthy margins." })
             : r.Warnings;
+        if (flown) for (int i = findings.Count - 1; i >= 0; i--) items.Insert(0, Col("POST-FLIGHT: " + findings[i], Red));
         if (r.MissionReady && Sim != null && Sim.FlightSummary != null && Sim.Active) items.Insert(0, "FLIGHT: " + Sim.FlightSummary);
         var ls = Style(_label, 14, TextAnchor.UpperLeft);
         foreach (var it in items.Take(8))
@@ -645,16 +669,17 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
             GUI.Label(new Rect(rx, ry, rw, ih), cont, ls);
             ry += ih + 8;
         }
-        if (r.MissionReady)
-            GUI.Label(new Rect(rx, Mathf.Max(ry + 10, 520), rw, 60),
-                Col("CML 4 crisis management (solar flares, comms loss, thruster faults) arrives in the next phase.", Dim), Style(_small, 13, TextAnchor.UpperLeft));
 
         var next = _calc.NextScenario();
-        bool canNext = r.MissionReady && next != null;
+        bool canNext = r.MissionReady && next != null && !inFlight;
+        if (inFlight)
+            GUI.Label(new Rect(w - 40 - 480, h - 40 - 62, 480, 62),
+                Col("Finish the flight and answer every Red Alert to complete the mission" + (next != null ? " and unlock " + next.ShortName + "." : "."), Amber),
+                Style(_label, 14, TextAnchor.MiddleRight));
         if (SimActive)
         {
             if (GUI.Button(new Rect(40, h - 40 - 62, 250, 62), "BACK TO DESIGN", _btn)) CloseReport();
-            if (GUI.Button(new Rect(300, h - 40 - 62, 250, 62), "KEEP FLYING  [ESC]", _btn)) _modal = Modal.None;
+            if (GUI.Button(new Rect(300, h - 40 - 62, 250, 62), inFlight ? "KEEP FLYING  [ENTER]" : "KEEP FLYING  [ESC]", _btn)) _modal = Modal.None;
         }
         else if (GUI.Button(new Rect(40, h - 40 - 62, 320, 62), "BACK TO DESIGN  [ESC]", _btn)) CloseReport();
         if (canNext && GUI.Button(new Rect(w - 40 - 420, h - 40 - 62, 420, 62), $"NEXT MISSION: {next.ShortName}  [ENTER]", _launchReady))
