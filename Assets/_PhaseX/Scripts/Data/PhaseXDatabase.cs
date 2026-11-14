@@ -3,7 +3,7 @@ using System.Linq;
 
 /// <summary>
 /// The game catalog: NASA-inspired modular components, loaded from spacecraft_parts.json by
-/// <see cref="PartsJsonLoader"/>, and the 4 scenarios (still defined here).
+/// <see cref="PartsJsonLoader"/>, and the mission scenarios, loaded from missions.json by <see cref="MissionsJsonLoader"/>.
 /// Values are simplified for gameplay but keep real-world trade-off directions.
 /// </summary>
 public static class PhaseXDatabase
@@ -93,7 +93,20 @@ public static class PhaseXDatabase
         // Every part and its stats live in Resources/Data/spacecraft_parts.json (see PartsJsonLoader).
         _parts = PartsJsonLoader.LoadAllParts();
 
-        _scenarios = new List<MissionScenario>
+        // Missions live in Resources/Data/missions.json (see MissionsJsonLoader). The built-in list below is only a
+        // safety net for a missing or empty file, so the game always has missions in the editor and in builds.
+        _scenarios = MissionsJsonLoader.LoadAllMissions();
+        if (_scenarios.Count == 0)
+        {
+            UnityEngine.Debug.LogWarning("[PhaseX JSON Loader] Using the built-in fallback missions.");
+            _scenarios = BuiltInScenarios();
+        }
+    }
+
+    /// <summary>The original four missions, used only when missions.json cannot be loaded.</summary>
+    public static List<MissionScenario> BuiltInScenarios()
+    {
+        return new List<MissionScenario>
         {
             new MissionScenario
             {

@@ -52,6 +52,9 @@ namespace PhaseX.Station
         /// <summary>Real-world background shown on the mission briefing board.</summary>
         public static string MissionBackground(string scenarioId)
         {
+            // missions.json can carry its own background; the switch below is the fallback for missions without one
+            string fromJson = PhaseXDatabase.GetScenario(scenarioId)?.RealMissionBackground;
+            if (!string.IsNullOrWhiteSpace(fromJson)) return fromJson;
             switch (scenarioId)
             {
                 case "lvl1_cubesat":

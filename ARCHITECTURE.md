@@ -1,14 +1,14 @@
 # PHASE X — Architecture
 
 PHASE X is a NASA Space Apps mission-design game. Everything is built from code at Play time: no prefabs, models,
-fonts, textures or material assets. The only data asset is the part catalog, `spacecraft_parts.json`. This document describes how the pieces fit, with the **3D Mission Control
+fonts, textures or material assets. The only data assets are the part and mission catalogs, `spacecraft_parts.json` and `missions.json`. This document describes how the pieces fit, with the **3D Mission Control
 station** (added after Phase 3) in detail.
 
 ## 1. Layers
 
 | Layer | Folder (`Assets/_PhaseX/Scripts/`) | Namespace | Role |
 |---|---|---|---|
-| Data | `Data/`, `Resources/Data/spacecraft_parts.json` | global | `SpacecraftPart`, `MissionScenario`, `MissionReport`; `PartsJsonLoader` reads the part catalog from JSON; `PhaseXDatabase` serves it plus the 4 scenarios |
+| Data | `Data/`, `Resources/Data/spacecraft_parts.json` | global | `SpacecraftPart`, `MissionScenario`, `MissionReport`; `PartsJsonLoader` and `MissionsJsonLoader` read the part and mission catalogs from JSON; `PhaseXDatabase` serves both |
 | Core | `Core/` | global | `MissionCalculator` (design state + the 6-resource engineering model), `PhaseXBootstrap`, `PhaseXInput` |
 | Visuals | `Visuals/` | global | `ProceduralSpacecraftView` (modular spacecraft + design viewport), `PhaseXMaterials` |
 | Simulation | `Simulation/` | global | `LunarFlightPlan`, `TrajectorySimulator` (CML 4 flight), `CrisisEventManager` (Red Alerts) |
@@ -27,7 +27,7 @@ and only talks to the old code through its public API plus four small hooks (sec
 ## 1a. Part catalog — `spacecraft_parts.json`
 
 Every spacecraft part and its stats live in one file: `Assets/_PhaseX/Resources/Data/spacecraft_parts.json`.
-No part is defined in C#. Mission scenarios are still defined in `PhaseXDatabase.cs`.
+No part is defined in C#. Missions live next to it in `missions.json` (section 1b).
 
 **Flow:** `PhaseXDatabase.Parts` (first access) → `PartsJsonLoader.LoadAllParts()` →
 `Resources.Load<TextAsset>("Data/spacecraft_parts")` → `JsonUtility` → `SpacecraftPartJsonDTO` → validated and mapped to
@@ -92,6 +92,57 @@ is paired with any orbit other than `orb_leo`. This one rule is in code, keyed b
 
 A station saved into a scene before the catalog grew is repaired at Play time: `HologramAssemblyTable.EnsureLvMinis()`
 rebuilds the miniatures if they do not match `LvIds`.
+
+## 1b. Mission catalog — `missions.json`
+
+All missions live in `Assets/_PhaseX/Resources/Data/missions.json`, under a root `"scenarios"` array. The order in the file
+is the campaign order ("next mission") and the F1–F9 order. Keep the sandbox last.
+
+**Flow:** `PhaseXDatabase.Scenarios` → `MissionsJsonLoader.LoadAllMissions()` → `Resources.Load<TextAsset>("Data/missions")`
+→ `JsonUtility.FromJson<MissionScenarioCatalog>` → validated `MissionScenario` objects. Re-read on every Play.
+If the file is missing or unusable, `PhaseXDatabase.BuiltInScenarios()` supplies the original four missions.
+
+**Schema.** Keys are the `MissionScenario` field names, so they are PascalCase (unlike the camelCase part file):
+
+| Key | Type | Meaning |
+|---|---|---|
+| `Id` | string, required, unique | Stable id |
+| `Title`, `ShortName` | string | Full title; short label for the header button |
+| `DifficultyLevel` | int ≥ 1 | Parts with `unlockLevel` up to this value are available |
+| `Objective`, `Briefing` | string | One-line goal; briefing paragraph |
+| `MaxBudget` | number | Budget cap in $M |
+| `TargetScience` | number | Science points needed |
+| `RequiredDeltaV` | number | m/s the craft must supply on top of the orbit's insertion delta-V |
+| `RequiredLifetimeMonths` | number | Minimum mission lifetime |
+| `MinReliability` | number 0–1 | Minimum product of all part reliabilities |
+| `SolarEfficiency` | number, above 0 to 1 | Sunlight factor applied to solar parts |
+| `CheckDataBottleneck`, `CheckDeltaV` | bool | Whether those two gauges are enforced |
+| `EnableCrisisEvents` | bool | Red Alerts during the flight |
+| `IsSandbox` | bool | Everything unlocked |
+| `AllowedOrbitIds` | string[] | Orbit part ids that count as the destination. Empty = any. Always unlocked for this mission |
+| `RealMissionBackground` | string | Real-world background on the 3D briefing board |
+| `RecommendedPayloadIds` | string[] | Payload part ids to highlight ("MISSION PICK" on the card, listed in both briefings) |
+
+**The 9 missions**
+
+| # | `Id` | Level | Budget | Science | Destination |
+|---|---|---|---|---|---|
+| F1 | `lvl1_cubesat` | 1 | $20M | 25 | LEO |
+| F2 | `msn_leo_weather` | 1 | $45M | 25 | LEO, 18 months |
+| F3 | `lvl2_ice` | 2 | $160M | 55 | LLO |
+| F4 | `nasa_capstone` | 2 | $65M | 35 | NRHO |
+| F5 | `nasa_lro` | 2 | $185M | 85 | LLO |
+| F6 | `lvl3_farside` | 3 | $320M | 90 | NRHO |
+| F7 | `nasa_viper` | 3 | $360M | 130 | LLO or NRHO, solar 45% |
+| F8 | `msn_cislunar_survey` | 3 | $240M | 110 | LLO or NRHO, 24 months |
+| F9 | `sandbox` | — | $1B | 100 | any |
+
+**Adding a mission:** add an object to `missions.json` and press Play. `PhaseX ▸ Data ▸ Validate Missions JSON` checks ids,
+ranges and that every orbit and payload id exists in the part file. Check that the mission can actually be won: the
+validator does not.
+
+**Header:** up to four missions get one row of large buttons; more become a two-row grid
+(`PhaseXRuntimeUI.ScenarioButtonRect`), which stays right of the mission title for up to 12 missions.
 
 ## 2. Boot sequence
 

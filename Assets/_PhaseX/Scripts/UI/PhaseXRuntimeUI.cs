@@ -159,10 +159,8 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
         if (SimActive) { HandleSimKeys(); return; }
 
         var sc = PhaseXDatabase.Scenarios;
-        if (PhaseXInput.Down(PhaseXInput.K.F1) && sc.Count > 0) _calc.LoadScenario(sc[0]);
-        if (PhaseXInput.Down(PhaseXInput.K.F2) && sc.Count > 1) _calc.LoadScenario(sc[1]);
-        if (PhaseXInput.Down(PhaseXInput.K.F3) && sc.Count > 2) _calc.LoadScenario(sc[2]);
-        if (PhaseXInput.Down(PhaseXInput.K.F4) && sc.Count > 3) _calc.LoadScenario(sc[3]);
+        int fn = PhaseXInput.FunctionKeyDown();          // F1-F9 pick a mission
+        if (fn >= 0 && fn < sc.Count) _calc.LoadScenario(sc[fn]);
         if (PhaseXInput.Down(PhaseXInput.K.D1)) SetTab(MissionSegmentRole.UserSegment);
         if (PhaseXInput.Down(PhaseXInput.K.D2)) SetTab(MissionSegmentRole.LaunchSegment);
         if (PhaseXInput.Down(PhaseXInput.K.D3)) SetTab(MissionSegmentRole.SpaceSegment);
@@ -290,21 +288,50 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
         GUI.Label(new Rect(68, 38, 520, 22), "// NASA MISSION CONTROL WORKSTATION", _subtitle);
 
         var sc = _calc.CurrentScenario;
-        GUI.Label(new Rect(560, 8, 540, 26), $"<b>MISSION:</b> {sc.Title.ToUpperInvariant()}", Style(_label, 17, TextAnchor.MiddleCenter));
-        GUI.Label(new Rect(560, 34, 540, 22), Col(sc.Objective, Dim), Style(_small, 12, TextAnchor.MiddleCenter));
+        // long mission titles shrink a little so they stay inside the title area (left of the mission buttons)
+        GUI.Label(new Rect(560, 8, HeaderTitleRight - 560, 26), $"<b>MISSION:</b> {sc.Title.ToUpperInvariant()}", Style(_label, sc.Title.Length > 30 ? 13 : 17, TextAnchor.MiddleCenter));
+        GUI.Label(new Rect(560, 32, HeaderTitleRight - 560, 28), Col(sc.Objective, Dim), Style(_small, sc.Objective.Length > 90 ? 10 : 12, TextAnchor.MiddleCenter));
 
         var list = PhaseXDatabase.Scenarios;
-        float bx = W - 14 - list.Count * 196 + 6;
+        bool grid = list.Count > 4;
+        var chip = grid ? Style(_btn, 11, TextAnchor.MiddleCenter) : _btn;
+        var chipOn = grid ? Style(_btnOn, 11, TextAnchor.MiddleCenter) : _btnOn;
         for (int i = 0; i < list.Count; i++)
         {
             var s = list[i];
-            var r = new Rect(bx + i * 196, 12, 190, 40);
+            var r = ScenarioButtonRect(i, list.Count);
             bool wasEnabled = GUI.enabled;
             GUI.enabled = wasEnabled && !LaunchLocked;      // no scenario switch during an active launch
-            if (GUI.Button(r, $"[F{i + 1}]  {s.ShortName}", s == sc ? _btnOn : _btn)) _calc.LoadScenario(s);
+            string caption = grid ? (i < 9 ? $"F{i + 1} " : "") + s.ShortName : $"[F{i + 1}]  {s.ShortName}";
+            if (GUI.Button(r, caption, s == sc ? chipOn : chip)) _calc.LoadScenario(s);
             GUI.enabled = wasEnabled;
             if (r.Contains(Event.current.mousePosition)) Hover("[F" + (i + 1) + "] " + s.Title, s.Objective);
         }
+    }
+
+    /// <summary>Right edge of the centred mission title in the header; the mission buttons must stay right of it.</summary>
+    public const float HeaderTitleRight = 1100f;
+
+    /// <summary>
+    /// Where mission button <paramref name="i"/> of <paramref name="n"/> sits in the header. Up to four missions get one
+    /// row of large buttons; more are laid out as a compact two-row grid that never reaches the mission title.
+    /// </summary>
+    public static Rect ScenarioButtonRect(int i, int n)
+    {
+        if (n <= 4) return new Rect(W - 14 - n * 196 + 6 + i * 196, 12, 190, 40);
+        int cols = (n + 1) / 2;
+        const float gap = 6f, areaW = W - 14 - HeaderTitleRight - 8;
+        float bw = Mathf.Min(190f, (areaW - (cols - 1) * gap) / cols);
+        float x0 = W - 14 - (cols * bw + (cols - 1) * gap);
+        return new Rect(x0 + (i % cols) * (bw + gap), 5 + (i / cols) * 27, bw, 25);
+    }
+
+    /// <summary>"A, B and C" from a mission's recommended payload ids, resolved to part names. Empty when it has none.</summary>
+    public static string RecommendedInstruments(MissionScenario sc)
+    {
+        if (sc == null || sc.RecommendedPayloadIds == null) return "";
+        var names = sc.RecommendedPayloadIds.Select(id => PhaseXDatabase.GetPart(id)?.Name).Where(n => !string.IsNullOrEmpty(n)).ToList();
+        return string.Join("   |   ", names);
     }
 
     void DrawCmlStrip()
@@ -402,7 +429,9 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
         Fill(new Rect(r.x, r.y, 4, r.height), CategoryColor(p.Category) * (unlocked ? 1f : 0.4f));
 
         var nameStyle = Style(_labelBold, 15, TextAnchor.UpperLeft);
-        string status = !unlocked ? Col("LOCKED - LEVEL " + p.UnlockLevel, Dim) : sel ? Col("INSTALLED", Green) : hover ? Col("CLICK TO ADD", Cyan) : "";
+        bool recommended = System.Array.IndexOf(_calc.CurrentScenario.RecommendedPayloadIds, p.Id) >= 0;
+        string status = !unlocked ? Col("LOCKED - LEVEL " + p.UnlockLevel, Dim) : sel ? Col("INSTALLED", Green) : hover ? Col("CLICK TO ADD", Cyan)
+            : recommended ? Col("MISSION PICK", Amber) : "";
         GUI.Label(new Rect(r.x + 14, r.y + 8, r.width - 140, 22), unlocked ? p.Name : Col(p.Name, Dim), nameStyle);
         GUI.Label(new Rect(r.xMax - 150, r.y + 9, 140, 20), status, Style(_labelBold, 11, TextAnchor.UpperRight));
 
@@ -589,7 +618,7 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
         else
         {
             title = "CONTROLS";
-            body = Col("[F1-F4] Scenario    [1-4] Segment tab    [5] All parts    [SPACE] Launch    [C] Clear design    Mouse: orbit / zoom the viewport", Dim);
+            body = Col($"[F1-F{Mathf.Min(9, PhaseXDatabase.Scenarios.Count)}] Mission    [1-4] Segment tab    [5] All parts    [SPACE] Launch    [C] Clear design    Mouse: orbit / zoom the viewport", Dim);
         }
         GUI.Box(tag, title, _chipOn);
         GUI.Label(new Rect(136, FooterRect.y, W - 150, FooterRect.height), body, Style(_label, 14, TextAnchor.MiddleLeft));
@@ -637,6 +666,14 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
         {
             float cx = 40 + (i % 2) * ((w - 80) / 2f);
             GUI.Label(new Rect(cx, y + (i / 2) * 28, (w - 80) / 2f - 10, 26), Col("> ", Amber) + req[i], rs);
+        }
+
+        string picks = RecommendedInstruments(sc);
+        if (picks.Length > 0)
+        {
+            float py = y + ((req.Count + 1) / 2) * 28 + 10;
+            GUI.Label(new Rect(40, py, w - 80, 20), "RECOMMENDED SCIENCE INSTRUMENTS", _h2);
+            GUI.Label(new Rect(40, py + 24, w - 80, 44), Col(picks, Cyan), Style(_label, 15, TextAnchor.UpperLeft));
         }
 
         if (GUI.Button(new Rect(w - 40 - 380, 700 - 40 - 64, 380, 64), "BEGIN TRADE STUDIES  [ENTER]", _launchReady)) CloseBriefing();

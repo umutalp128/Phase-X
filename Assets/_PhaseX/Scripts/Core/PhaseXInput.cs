@@ -10,7 +10,7 @@ using UnityEngine.InputSystem;
 /// </summary>
 public static class PhaseXInput
 {
-    public enum K { F1, F2, F3, F4, D1, D2, D3, D4, D5, Space, Enter, Escape, C, Z, X, Tab, W, A, S, D, E, V, Shift, Left, Right, Up, Down, Backspace }
+    public enum K { F1, F2, F3, F4, F5, F6, F7, F8, F9, D1, D2, D3, D4, D5, Space, Enter, Escape, C, Z, X, Tab, W, A, S, D, E, V, Shift, Left, Right, Up, Down, Backspace }
 
     public static bool Down(K k)
     {
@@ -23,6 +23,11 @@ public static class PhaseXInput
             case K.F2: return kb.f2Key.wasPressedThisFrame;
             case K.F3: return kb.f3Key.wasPressedThisFrame;
             case K.F4: return kb.f4Key.wasPressedThisFrame;
+            case K.F5: return kb.f5Key.wasPressedThisFrame;
+            case K.F6: return kb.f6Key.wasPressedThisFrame;
+            case K.F7: return kb.f7Key.wasPressedThisFrame;
+            case K.F8: return kb.f8Key.wasPressedThisFrame;
+            case K.F9: return kb.f9Key.wasPressedThisFrame;
             case K.D1: return kb.digit1Key.wasPressedThisFrame || kb.numpad1Key.wasPressedThisFrame;
             case K.D2: return kb.digit2Key.wasPressedThisFrame || kb.numpad2Key.wasPressedThisFrame;
             case K.D3: return kb.digit3Key.wasPressedThisFrame || kb.numpad3Key.wasPressedThisFrame;
@@ -56,6 +61,11 @@ public static class PhaseXInput
             case K.F2: return Input.GetKeyDown(KeyCode.F2);
             case K.F3: return Input.GetKeyDown(KeyCode.F3);
             case K.F4: return Input.GetKeyDown(KeyCode.F4);
+            case K.F5: return Input.GetKeyDown(KeyCode.F5);
+            case K.F6: return Input.GetKeyDown(KeyCode.F6);
+            case K.F7: return Input.GetKeyDown(KeyCode.F7);
+            case K.F8: return Input.GetKeyDown(KeyCode.F8);
+            case K.F9: return Input.GetKeyDown(KeyCode.F9);
             case K.D1: return Input.GetKeyDown(KeyCode.Alpha1) || Input.GetKeyDown(KeyCode.Keypad1);
             case K.D2: return Input.GetKeyDown(KeyCode.Alpha2) || Input.GetKeyDown(KeyCode.Keypad2);
             case K.D3: return Input.GetKeyDown(KeyCode.Alpha3) || Input.GetKeyDown(KeyCode.Keypad3);
@@ -83,6 +93,15 @@ public static class PhaseXInput
         }
         return false;
 #endif
+    }
+
+    static readonly K[] FunctionKeys = { K.F1, K.F2, K.F3, K.F4, K.F5, K.F6, K.F7, K.F8, K.F9 };
+
+    /// <summary>Index (0-8) of the F1-F9 key pressed this frame, or -1.</summary>
+    public static int FunctionKeyDown()
+    {
+        for (int i = 0; i < FunctionKeys.Length; i++) if (Down(FunctionKeys[i])) return i;
+        return -1;
     }
 
     /// <summary>True while a movement key is held (used by the 3D character controller).</summary>

@@ -66,8 +66,14 @@ public class MissionCalculator : MonoBehaviour
 
     public static bool IsSingleSlot(PartCategory c) => Array.IndexOf(SingleSlots, c) >= 0;
 
+    /// <summary>
+    /// Parts unlock by mission level. A mission's own destination orbits are always available, otherwise a mission
+    /// could require an orbit its level has not unlocked yet.
+    /// </summary>
     public bool IsUnlocked(SpacecraftPart p) =>
-        p != null && CurrentScenario != null && (CurrentScenario.IsSandbox || p.UnlockLevel <= CurrentScenario.DifficultyLevel);
+        p != null && CurrentScenario != null &&
+        (CurrentScenario.IsSandbox || p.UnlockLevel <= CurrentScenario.DifficultyLevel ||
+         (p.Category == PartCategory.Orbit && CurrentScenario.AllowedOrbitIds.Contains(p.Id)));
 
     public bool IsSelected(SpacecraftPart p) => _selected.Contains(p);
 

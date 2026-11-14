@@ -24,6 +24,18 @@ namespace PhaseX.EditorTools
                 Debug.LogWarning($"[PhaseX] {PartsJsonLoader.FileName}: {parts.Count} parts loaded, {PartsJsonLoader.LastErrors.Count} problem(s) - see the errors above.");
         }
 
+        [MenuItem("PhaseX/Data/Validate Missions JSON")]
+        public static void ValidateMissions()
+        {
+            AssetDatabase.ImportAsset("Assets/_PhaseX/Resources/Data/missions.json", ImportAssetOptions.ForceUpdate);
+            PhaseXDatabase.Reload();
+            var missions = PhaseXDatabase.Scenarios;
+            if (MissionsJsonLoader.LastErrors.Count == 0)
+                Debug.Log($"[PhaseX] {MissionsJsonLoader.FileName} is valid: {missions.Count} missions ({string.Join(", ", missions.Select(m => m.ShortName))}).");
+            else
+                Debug.LogWarning($"[PhaseX] {MissionsJsonLoader.FileName}: {missions.Count} missions loaded, {MissionsJsonLoader.LastErrors.Count} problem(s) - see the errors above.");
+        }
+
         [MenuItem("PhaseX/Data/Open Parts JSON")]
         public static void Open()
         {

@@ -80,6 +80,8 @@ namespace PhaseX.Station
                 StationKit.Col("OBJECTIVE   ", StationKit.Amber) + sc.Objective + "\n\n" +
                 sc.Briefing + "\n\n" +
                 StationKit.Col("REQUIREMENTS   ", StationKit.Amber) + string.Join("   |   ", req) + "\n\n" +
+                (PhaseXRuntimeUI.RecommendedInstruments(sc).Length > 0
+                    ? StationKit.Col("RECOMMENDED INSTRUMENTS   ", StationKit.Amber) + PhaseXRuntimeUI.RecommendedInstruments(sc) + "\n\n" : "") +
                 StationKit.Col("REAL MISSIONS   ", StationKit.Cyan) + StationKnowledge.MissionBackground(sc.Id) + "\n\n" +
                 (active ? StationKit.Col("This is your ACTIVE mission.", StationKit.Green)
                         : StationKit.Col("Accepting a different mission clears the current spacecraft design.", dim));

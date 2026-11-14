@@ -311,6 +311,47 @@ public class ProceduralSpacecraftView : MonoBehaviour
         Prim(PrimitiveType.Cylinder, rv, new Vector3(0.35f, 0.42f, 0.45f), new Vector3(0.05f, 0.25f, 0.05f), Vector3.zero, PhaseXMaterials.Lit(Alu, 0.6f, 0.8f));
         Prim(PrimitiveType.Cube, rv, new Vector3(0.35f, 0.7f, 0.45f), new Vector3(0.28f, 0.12f, 0.12f), Vector3.zero, PhaseXMaterials.Lit(Dark, 0.6f, 0.4f));
 
+        // --- fluxgate magnetometer on a long boom (kept far from the spacecraft's own magnetic noise)
+        var mag = Module("pl_mag_plasma");
+        var boom = new GameObject("Boom").transform;
+        boom.SetParent(mag, false);
+        boom.localPosition = new Vector3(-0.62f, 0.7f, 0.62f);
+        boom.localRotation = Quaternion.FromToRotation(Vector3.up, new Vector3(-1f, 0.55f, 1f).normalized);
+        var carbonMetal = PhaseXMaterials.Lit(new Color(0.16f, 0.17f, 0.2f), 0.75f, 0.85f);
+        Prim(PrimitiveType.Cylinder, boom, new Vector3(0, 0.12f, 0), new Vector3(0.16f, 0.12f, 0.16f), Vector3.zero, PhaseXMaterials.Lit(Alu, 0.6f, 0.8f));
+        Prim(PrimitiveType.Cylinder, boom, new Vector3(0, 1.2f, 0), new Vector3(0.05f, 1.2f, 0.05f), Vector3.zero, carbonMetal);
+        Prim(PrimitiveType.Cylinder, boom, new Vector3(0, 1.25f, 0), new Vector3(0.1f, 0.07f, 0.1f), Vector3.zero, PhaseXMaterials.Lit(Gold, 0.8f, 0.9f));
+        Prim(PrimitiveType.Cube, boom, new Vector3(0, 1.72f, 0), new Vector3(0.14f, 0.1f, 0.14f), Vector3.zero, PhaseXMaterials.Lit(White, 0.5f, 0.2f));   // plasma sensor
+        Prim(PrimitiveType.Sphere, boom, new Vector3(0, 2.46f, 0), Vector3.one * 0.2f, Vector3.zero, PhaseXMaterials.Lit(Cyan, 0.6f, 0f, new Color(0.3f, 1.3f, 2f)));
+
+        // --- LOLA laser altimeter: gold optical bench, twin receiver telescopes, green laser emitter (front, low)
+        var lola = Module("pl_lola_lidar");
+        var beryllium = PhaseXMaterials.Lit(new Color(0.62f, 0.64f, 0.66f), 0.7f, 0.85f);
+        Prim(PrimitiveType.Cube, lola, new Vector3(-0.36f, -0.42f, -R - 0.13f), new Vector3(0.62f, 0.44f, 0.24f), Vector3.zero, PhaseXMaterials.Lit(Gold, 0.8f, 0.9f));
+        for (int s = -1; s <= 1; s += 2)
+        {
+            Prim(PrimitiveType.Cylinder, lola, new Vector3(-0.36f + s * 0.15f, -0.34f, -R - 0.4f), new Vector3(0.2f, 0.16f, 0.2f), new Vector3(90, 0, 0), beryllium);
+            Prim(PrimitiveType.Cylinder, lola, new Vector3(-0.36f + s * 0.15f, -0.34f, -R - 0.565f), new Vector3(0.16f, 0.006f, 0.16f), new Vector3(90, 0, 0), PhaseXMaterials.Lit(Dark, 0.95f, 0.2f));
+        }
+        Prim(PrimitiveType.Cylinder, lola, new Vector3(-0.36f, -0.55f, -R - 0.3f), new Vector3(0.11f, 0.06f, 0.11f), new Vector3(90, 0, 0), PhaseXMaterials.Lit(Dark, 0.6f, 0.5f));
+        Prim(PrimitiveType.Cylinder, lola, new Vector3(-0.36f, -0.55f, -R - 0.365f), new Vector3(0.085f, 0.006f, 0.085f), new Vector3(90, 0, 0),
+            PhaseXMaterials.Lit(new Color(0.1f, 0.9f, 0.4f), 0.9f, 0f, new Color(0.2f, 2.4f, 0.8f)));
+
+        // --- TRIDENT ice drill: drill tower with a spiral auger, gold motor head and the white MSolo spectrometer box
+        var drill = Module("pl_ice_drill");
+        const float dx = -0.78f, dz = -0.78f;
+        Prim(PrimitiveType.Cube, drill, new Vector3(dx + 0.14f, -0.1f, dz + 0.14f), new Vector3(0.34f, 0.12f, 0.34f), new Vector3(0, 45, 0), PhaseXMaterials.Lit(Alu, 0.6f, 0.8f));   // bracket
+        for (int s = -1; s <= 1; s += 2)
+            Prim(PrimitiveType.Cube, drill, new Vector3(dx - 0.14f + s * 0.07f, -0.2f, dz - 0.14f - s * 0.07f), new Vector3(0.035f, 1.9f, 0.035f), Vector3.zero, PhaseXMaterials.Lit(Alu, 0.65f, 0.85f));
+        Prim(PrimitiveType.Cylinder, drill, new Vector3(dx - 0.14f, -0.75f, dz - 0.14f), new Vector3(0.045f, 0.95f, 0.045f), Vector3.zero, PhaseXMaterials.Lit(new Color(0.45f, 0.47f, 0.5f), 0.7f, 0.9f));
+        for (int i = 0; i < 11; i++)   // auger flights: tilted discs stepping around the rod read as a spiral
+            Prim(PrimitiveType.Cylinder, drill, new Vector3(dx - 0.14f, -0.35f - i * 0.125f, dz - 0.14f), new Vector3(0.15f, 0.008f, 0.15f), new Vector3(22f, i * 60f, 0),
+                PhaseXMaterials.Lit(new Color(0.5f, 0.52f, 0.55f), 0.7f, 0.9f));
+        Prim(PrimitiveType.Sphere, drill, new Vector3(dx - 0.14f, -1.74f, dz - 0.14f), new Vector3(0.11f, 0.16f, 0.11f), Vector3.zero, PhaseXMaterials.Lit(Dark, 0.5f, 0.7f));   // bit
+        Prim(PrimitiveType.Cylinder, drill, new Vector3(dx - 0.14f, 0.82f, dz - 0.14f), new Vector3(0.24f, 0.13f, 0.24f), Vector3.zero, PhaseXMaterials.Lit(Gold, 0.8f, 0.9f));    // motor head
+        Prim(PrimitiveType.Cube, drill, new Vector3(dx + 0.1f, 0.42f, dz + 0.1f), new Vector3(0.3f, 0.26f, 0.3f), new Vector3(0, 45, 0), PhaseXMaterials.Lit(White, 0.5f, 0.2f));  // MSolo
+        Prim(PrimitiveType.Cylinder, drill, new Vector3(dx - 0.02f, 0.42f, dz - 0.02f), new Vector3(0.08f, 0.07f, 0.08f), new Vector3(90, 45, 0), PhaseXMaterials.Lit(Dark, 0.8f, 0.4f));
+
         // --- S-band patch + whip antenna
         var sb = Module("com_sband");
         Prim(PrimitiveType.Cube, sb, new Vector3(0.4f, 0.93f, 0.35f), new Vector3(0.4f, 0.03f, 0.4f), Vector3.zero, PhaseXMaterials.Lit(White, 0.5f, 0.2f));

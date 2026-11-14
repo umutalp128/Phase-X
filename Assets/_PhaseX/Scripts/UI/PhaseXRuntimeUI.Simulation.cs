@@ -30,10 +30,8 @@ public partial class PhaseXRuntimeUI
 
         if (LaunchLocked) return;      // no scenario switch during an active launch
         var sc = PhaseXDatabase.Scenarios;
-        if (PhaseXInput.Down(PhaseXInput.K.F1) && sc.Count > 0) _calc.LoadScenario(sc[0]);
-        if (PhaseXInput.Down(PhaseXInput.K.F2) && sc.Count > 1) _calc.LoadScenario(sc[1]);
-        if (PhaseXInput.Down(PhaseXInput.K.F3) && sc.Count > 2) _calc.LoadScenario(sc[2]);
-        if (PhaseXInput.Down(PhaseXInput.K.F4) && sc.Count > 3) _calc.LoadScenario(sc[3]);
+        int fn = PhaseXInput.FunctionKeyDown();
+        if (fn >= 0 && fn < sc.Count) _calc.LoadScenario(sc[fn]);
     }
 
     void DrawSimulationHud()
@@ -270,7 +268,7 @@ public partial class PhaseXRuntimeUI
         Fill(new Rect(0, FooterRect.y, W, 1), CyanDim);
         GUI.Box(new Rect(14, FooterRect.y + 8, 110, 24), "CONTROLS", _chipOn);
         GUI.Label(new Rect(136, FooterRect.y, W - 150, FooterRect.height),
-            Col("[SPACE] Pause    [Z/X/C] 1x / 2x / 4x    [1-4] Camera    [TAB] Next camera    Mouse: drag to orbit, wheel to zoom    [ESC] Report    [F1-F4] New scenario", Dim),
+            Col("[SPACE] Pause    [Z/X/C] 1x / 2x / 4x    [1-4] Camera    [TAB] Next camera    Mouse: drag to orbit, wheel to zoom    [ESC] Report    [F1-F9] New mission", Dim),
             Style(_label, 14, TextAnchor.MiddleLeft));
     }
 }

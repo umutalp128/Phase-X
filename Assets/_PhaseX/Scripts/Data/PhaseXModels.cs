@@ -88,6 +88,17 @@ public class MissionScenario
     public bool IsSandbox;
     /// <summary>Orbit ids that reach the target. Empty = any orbit.</summary>
     public string[] AllowedOrbitIds = Array.Empty<string>();
+    /// <summary>Optional real-world background shown on the 3D briefing board (see StationKnowledge.MissionBackground).</summary>
+    public string RealMissionBackground = "";
+    /// <summary>Optional payload part ids that suit this mission; the workstation and briefing board highlight them.</summary>
+    public string[] RecommendedPayloadIds = Array.Empty<string>();
+}
+
+/// <summary>Root object of missions.json (JsonUtility needs a wrapper around the list).</summary>
+[Serializable]
+public class MissionScenarioCatalog
+{
+    public List<MissionScenario> scenarios = new List<MissionScenario>();
 }
 
 /// <summary>One live resource gauge (the HUD shows six of these).</summary>

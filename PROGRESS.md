@@ -319,6 +319,44 @@ capacity. Full table in `ARCHITECTURE.md`.
   carbon and grey Firefly Alpha, bronze Atlas V core, silver Vulcan Centaur upper stage, white Falcon 9 / Heavy with the
   red stripe, and a white Pegasus XL with its delta wing. Checked by material colour for all seven and by screenshot.
 
+## JSON Missions, 5 New Missions, 3 NASA Instruments ✅
+
+- **Missions in JSON:** all missions load from `Resources/Data/missions.json` through `MissionsJsonLoader`. The original four
+  stay in `PhaseXDatabase.BuiltInScenarios()` only as a fallback for a missing file. `MissionScenario` gained
+  `RealMissionBackground` and `RecommendedPayloadIds`. Schema in `ARCHITECTURE.md` section 1b.
+- **9 missions**, in campaign order: L1 CubeSat, Space Weather, L2 South Pole Ice, NASA CAPSTONE, NASA LRO, L3 Far-Side
+  Lander, NASA VIPER, Lava Tube Survey, Sandbox. F1–F9 select them.
+- **3 instruments** (in `spacecraft_parts.json`, with 3D modules in `ProceduralSpacecraftView`): Fluxgate Magnetometer &
+  Plasma Boom, LOLA Laser Altimeter, TRIDENT Ice Drill & Mass Spectrometer. They show in the CAD viewport, the flight sim
+  and the hologram X-ray.
+- **Header:** two-row grid of mission buttons for more than four missions; long titles shrink to stay in their area.
+- **Recommended instruments** are listed in the workstation briefing and on the 3D briefing board, and tagged
+  "MISSION PICK" on the part cards.
+- Launch vehicles were not touched.
+
+### Changes made so the new missions can be won
+The numbers as specified left two missions impossible with the current part catalog, so these were adjusted:
+- **NASA CAPSTONE:** budget $35M → **$65M**. NRHO ($12M) + bipropellant engine ($12M) + ESPA bus ($6M) + the cheapest
+  launcher ($7.5M) already cost $37.5M before power, payload and radio; the cheapest complete design is $55M.
+- **Space Weather:** science target 45 → **25**, and the briefing no longer promises optical imaging. A Level 1 CubeSat
+  cannot power or downlink a magnetometer and a camera together (25 W needed from 20 W; 3.25 Mbps through a 2 Mbps radio).
+- **Destination orbits:** a mission's `AllowedOrbitIds` are now always unlocked, because CAPSTONE is Level 2 and NRHO
+  unlocks at Level 3.
+
+Known issue, not changed: **NASA VIPER can be won, but not with a rover.** Rover + drill needs about 200 W at 45% sunlight
+and weighs too much for one engine: the best such design reaches 1,348 of the 1,600 m/s required. The winning design uses
+drill + neutron spectrometer + magnetometer, so the objective text ("deliver a rover") overstates what is possible.
+
+### Verified (2026-11-14)
+- Zero compiler errors; batch play-mode test with zero runtime errors.
+- 9 missions and 25 parts load with no loader errors. The four original missions match the old C# values field by field.
+- A winning design was found and evaluated for every mission (scores 71.7 to 88.2).
+- Header buttons stay inside the header, right of the title, without overlap for 1 to 12 missions (rectangle maths only).
+- Bad mission JSON (malformed, duplicate id, missing id, unknown orbit) gives clear errors.
+- 3D modules for the three instruments checked by screenshot in the CAD viewport and on the hologram.
+- **Not verified:** how the header grid, the "MISSION PICK" tag and the recommended-instrument lines actually look
+  (OnGUI is not captured in batch mode), and the F5–F9 keys with a real keyboard.
+
 ### Next phases (planned)
 - (On hold) Phase 4: 4-player co-op role ownership and segment sign-off; campaign unlocks; save progress.
 - (On hold) Phase 5: polish, audio, accessibility, standalone builds, demo script.
