@@ -97,12 +97,12 @@ namespace PhaseX.Station
             var shell = StationKit.Node("Room", t, Vector3.zero);
             var floorA = PhaseXMaterials.Lit(new Color(0.105f, 0.12f, 0.15f), 0.72f, 0.25f);
             var floorB = PhaseXMaterials.Lit(new Color(0.085f, 0.095f, 0.12f), 0.72f, 0.25f);
-            var wall = PhaseXMaterials.Lit(new Color(0.17f, 0.2f, 0.25f), 0.35f, 0.1f);
-            var wallDark = PhaseXMaterials.Lit(new Color(0.1f, 0.115f, 0.145f), 0.4f, 0.2f);
-            var ceil = PhaseXMaterials.Lit(new Color(0.07f, 0.08f, 0.1f), 0.3f, 0.1f);
             var trim = PhaseXMaterials.Lit(new Color(0.05f, 0.055f, 0.07f), 0.6f, 0.6f);
 
-            // floor + ceiling as tiles (each tile then gets its own nearest lights), one collider for the floor
+            // Walls, window wall, corner pilasters and the coffered ceiling are one seamless Blender model.
+            var shellModel = PhaseXModelLibrary.InstantiateModel("Station/station_room_shell", shell).transform;
+
+            // floor as tiles over a grout slab (each tile then gets its own nearest lights), one collider for the floor
             var floor = StationKit.Node("Floor", shell, Vector3.zero);
             var ceiling = StationKit.Node("Ceiling", shell, Vector3.zero);
             for (int ix = 0; ix < 5; ix++)
@@ -110,7 +110,6 @@ namespace PhaseX.Station
             {
                 var c = new Vector3(-HalfW + 2f + ix * 4f, 0, -HalfD + 2f + iz * 4f);
                 StationKit.Box(floor, "Tile", c + Vector3.down * 0.1f, new Vector3(3.96f, 0.2f, 3.96f), (ix + iz) % 2 == 0 ? floorA : floorB);
-                StationKit.Box(ceiling, "Panel", c + Vector3.up * (Height + 0.1f), new Vector3(3.96f, 0.2f, 3.96f), ceil);
             }
             StationKit.Box(floor, "Grout", new Vector3(0, -0.12f, 0), new Vector3(HalfW * 2f, 0.2f, HalfD * 2f), trim);
             StationKit.Blocker(floor, "FloorCollider", new Vector3(0, -0.5f, 0), new Vector3(HalfW * 2f + 2f, 1f, HalfD * 2f + 2f));
@@ -120,39 +119,22 @@ namespace PhaseX.Station
                 PhaseXMaterials.Lit(new Color(0.02f, 0.06f, 0.09f), 0.8f, 0f, new Color(0.03f, 0.22f, 0.34f)));
             StationKit.Prim(PrimitiveType.Cylinder, floor, "FloorRingInner", new Vector3(0, 0.006f, 0.3f), new Vector3(4.3f, 0.004f, 4.3f), floorB);
 
-            // walls: south, west, east are solid panels; north holds the panoramic window
+            // wall colliders (the visible walls are part of the shell model)
             var walls = StationKit.Node("Walls", shell, Vector3.zero);
-            for (int i = 0; i < 5; i++)
-            {
-                float x = -HalfW + 2f + i * 4f;
-                StationKit.Box(walls, "SouthPanel", new Vector3(x, Height / 2f, -HalfD - 0.1f), new Vector3(3.97f, Height, 0.2f), i % 2 == 0 ? wall : wallDark);
-            }
-            for (int i = 0; i < 4; i++)
-            {
-                float z = -HalfD + 2f + i * 4f;
-                StationKit.Box(walls, "WestPanel", new Vector3(-HalfW - 0.1f, Height / 2f, z), new Vector3(0.2f, Height, 3.97f), i % 2 == 0 ? wall : wallDark);
-                StationKit.Box(walls, "EastPanel", new Vector3(HalfW + 0.1f, Height / 2f, z), new Vector3(0.2f, Height, 3.97f), i % 2 == 0 ? wall : wallDark);
-            }
             StationKit.Blocker(walls, "SouthCollider", new Vector3(0, Height / 2f, -HalfD - 0.5f), new Vector3(HalfW * 2f + 2f, Height, 1f));
             StationKit.Blocker(walls, "WestCollider", new Vector3(-HalfW - 0.5f, Height / 2f, 0), new Vector3(1f, Height, HalfD * 2f + 2f));
             StationKit.Blocker(walls, "EastCollider", new Vector3(HalfW + 0.5f, Height / 2f, 0), new Vector3(1f, Height, HalfD * 2f + 2f));
             StationKit.Blocker(walls, "NorthCollider", new Vector3(0, Height / 2f, HalfD + 0.5f), new Vector3(HalfW * 2f + 2f, Height, 1f));
 
-            float nz = HalfD + 0.1f;
-            float side = HalfW - WinHalf;
-            StationKit.Box(walls, "NorthSill", new Vector3(0, WinBottom / 2f, nz), new Vector3(HalfW * 2f, WinBottom, 0.2f), wallDark);
-            StationKit.Box(walls, "NorthHeader", new Vector3(0, (WinTop + Height) / 2f, nz), new Vector3(HalfW * 2f, Height - WinTop, 0.2f), wallDark);
-            StationKit.Box(walls, "NorthLeft", new Vector3(-HalfW + side / 2f, (WinBottom + WinTop) / 2f, nz), new Vector3(side, WinTop - WinBottom, 0.2f), wall);
-            StationKit.Box(walls, "NorthRight", new Vector3(HalfW - side / 2f, (WinBottom + WinTop) / 2f, nz), new Vector3(side, WinTop - WinBottom, 0.2f), wall);
+            foreach (var cx in new[] { -1f, 1f })
+            foreach (var cz in new[] { -1f, 1f })
+                StationKit.Blocker(walls, "PilasterCollider", new Vector3(cx * (HalfW - 0.17f), Height / 2f, cz * (HalfD - 0.17f)), new Vector3(0.36f, Height, 0.36f));
 
-            // panoramic observation window: tinted glass and mullions
+            float nz = HalfD + 0.1f;
+            // panoramic observation window: tinted glass (frame, ledge and mullions are part of the shell model)
             var window = StationKit.Node("PanoramicWindow", shell, Vector3.zero);
             StationKit.Box(window, "Glass", new Vector3(0, (WinBottom + WinTop) / 2f, nz), new Vector3(WinHalf * 2f, WinTop - WinBottom, 0.03f),
                 StationKit.Ghost(new Color(0.35f, 0.65f, 0.9f, 0.07f)));
-            for (int i = -2; i <= 2; i++)
-                StationKit.Box(window, "Mullion", new Vector3(i * WinHalf / 2.5f * 1.25f, (WinBottom + WinTop) / 2f, nz - 0.02f), new Vector3(0.07f, WinTop - WinBottom, 0.1f), trim);
-            StationKit.Box(window, "FrameTop", new Vector3(0, WinTop, nz - 0.02f), new Vector3(WinHalf * 2f + 0.2f, 0.1f, 0.14f), trim);
-            StationKit.Box(window, "FrameBottom", new Vector3(0, WinBottom, nz - 0.06f), new Vector3(WinHalf * 2f + 0.2f, 0.1f, 0.3f), trim);
 
             // big wall telemetry screen above the window
             var screen = StationKit.Node("WallTelemetryScreen", shell, new Vector3(0, 4.4f, HalfD - 0.03f));
@@ -174,6 +156,9 @@ namespace PhaseX.Station
             Strip("StripFloorSouth", new Vector3(0, 0.08f, -HalfD + 0.05f), new Vector3(HalfW * 2f - 0.6f, 0.05f, 0.05f));
             Strip("OverheadA", new Vector3(-4f, Height - 0.03f, 0), new Vector3(0.14f, 0.05f, 9f));
             Strip("OverheadB", new Vector3(4f, Height - 0.03f, 0), new Vector3(0.14f, 0.05f, 9f));
+            // the accent strips on the wall ribs follow the mission state too
+            var accents = PhaseXModelLibrary.FindRenderer(shellModel, "AccentStrips");
+            if (accents != null) list.Add(accents);
             station.statusStrips = list.ToArray();
 
             // room lighting: four soft ceiling lights
@@ -232,8 +217,10 @@ namespace PhaseX.Station
 
             // The rocket on the pad (origin at its base). LaunchControlConsole puts the chosen launch vehicle's model here.
             rocket = StationKit.Node("Rocket", ext, new Vector3(0, 1.6f, padZ));
-            flame = StationKit.Prim(PrimitiveType.Sphere, rocket, "Flame", new Vector3(0, -4.5f, 0), new Vector3(2.6f, 9f, 2.6f),
-                PhaseXMaterials.Lit(new Color(1f, 0.6f, 0.2f), 0.5f, 0f, new Color(6f, 2.6f, 0.6f)));
+            // engine plume: layered Blender effect mesh, nozzle at the rocket's base, stretched by LaunchControlConsole
+            flame = StationKit.Node("Flame", rocket, Vector3.zero);
+            flame.localScale = new Vector3(8f, 9f, 8f);
+            PhaseXModelLibrary.InstantiateModel("Simulation/fx_exhaust_plume", flame);
             flameLight = StationKit.PointLight(rocket, "FlameLight", new Vector3(0, -3f, 0), new Color(1f, 0.6f, 0.25f), 80f, 120f);
             flame.gameObject.SetActive(false);
             flameLight.enabled = false;

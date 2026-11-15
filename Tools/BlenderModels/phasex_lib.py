@@ -30,6 +30,10 @@ MATS = {
     "Mat_GlowBlue": (0.4, 0.6, 1.0, 0, 0.5, 3), "Mat_GlowOrange": (1.0, 0.5, 0.15, 0, 0.5, 3),
     "Mat_LedA": (0.3, 1.0, 0.5, 0, 0.5, 3), "Mat_LedB": (1.0, 0.68, 0.18, 0, 0.5, 3),
     "Mat_RtgGlow": (1.0, 0.42, 0.1, 0, 0.5, 3), "Mat_Beam": (0.3, 0.8, 1.0, 0, 0.5, 1),
+    "Mat_Wall": (0.17, 0.20, 0.25, 0.1, 0.65, 0), "Mat_WallDark": (0.10, 0.115, 0.145, 0.2, 0.6, 0),
+    "Mat_Ceiling": (0.07, 0.08, 0.10, 0.1, 0.7, 0), "Mat_Trim": (0.05, 0.055, 0.07, 0.6, 0.4, 0),
+    "Mat_FxCore": (1.0, 0.95, 0.8, 0, 0.5, 6), "Mat_FxFlame": (1.0, 0.55, 0.15, 0, 0.5, 4),
+    "Mat_FxOuter": (1.0, 0.35, 0.1, 0, 0.5, 2), "Mat_FxPuff": (0.9, 0.95, 1.0, 0, 0.5, 1),
 }
 
 
@@ -176,11 +180,37 @@ class Model:
         self.buckets = {}     # (group, objname, mat) -> bmesh
         self.g = None         # current group
         self.M = Matrix.Identity(4)   # current local transform, applied before placement
+        # ---- rig and animation (all optional; a model without clips is exported as a static mesh)
+        self.bones = []       # (name, head, tail, parent) in Unity coordinates
+        self.b = None         # current bone: geometry added while it is set is skinned to it
+        self.pose_keys = []   # (frame, {bone: (unity euler, unity offset or None)})
+        self.obj_keys = []    # (object or group name, frame, offset, unity euler, scale)
+        self.clips = []       # (name, first frame, last frame, loop)
+        self.fps = 30
 
     # ---- structure
     def group(self, name, pivot=(0, 0, 0), parent=None):
         self.groups[name] = (Vector(pivot), parent)
         return name
+
+    # ---- rig and animation
+    def bone(self, name, head, tail, parent=None):
+        """A bone of the model's armature (Unity coordinates). Use `m.b = name` to skin the geometry that follows."""
+        self.bones.append((name, Vector(head), Vector(tail), parent))
+        return name
+
+    def clip(self, name, first, last, loop=False):
+        """Declare an animation clip as a frame range of the timeline. Unity splits the take by these ranges."""
+        self.clips.append((name, int(first), int(last), bool(loop)))
+
+    def pose(self, frame, bones):
+        """Key bones at a frame: {bone: (ex, ey, ez)} or {bone: ((ex, ey, ez), (dx, dy, dz))}, Unity Euler degrees
+        about the character's own axes and an optional offset in metres."""
+        self.pose_keys.append((frame, bones))
+
+    def key(self, name, frame, pos=(0, 0, 0), rot=(0, 0, 0), scale=1.0):
+        """Key a group or named object at a frame: offset from its pivot, Unity Euler rotation, scale (number or xyz)."""
+        self.obj_keys.append((name, frame, Vector(pos), tuple(rot), scale))
 
     def named(self, name, pivot=(0, 0, 0)):
         self.pivots[name] = Vector(pivot)
@@ -196,16 +226,24 @@ class Model:
 
     def _bm(self, m, g, n):
         key = (g, n or m, m)
-        if key not in self.buckets: self.buckets[key] = bmesh.new()
+        if key not in self.buckets:
+            self.buckets[key] = bmesh.new()
+            if self.bones: self.buckets[key].verts.layers.deform.verify()    # before any vertex exists
         return self.buckets[key]
 
-    def add(self, mesh, m, M=None, g=None, n=None):
+    def add(self, mesh, m, M=None, g=None, n=None, bone=None):
         verts, faces = mesh
         g = g if g is not None else self.g
         bm = self._bm(m, g, n)
         origin = self._group_world(g) + (self.pivots[n] if n in self.pivots else Vector((0, 0, 0)))
+        if self.bones: origin = Vector((0, 0, 0))            # skinned meshes stay in armature space
         X = self.M @ (M if M is not None else Matrix.Identity(4))
         vs = [bm.verts.new(U((X @ Vector(v)) - origin)) for v in verts]
+        bone = bone or self.b
+        if self.bones and bone is not None:
+            idx = [b[0] for b in self.bones].index(bone)
+            dl = bm.verts.layers.deform.active
+            for v in vs: v[dl][idx] = 1.0
         for f in faces:
             try: bm.faces.new([vs[i] for i in f])
             except ValueError: pass
@@ -361,8 +399,7 @@ class Model:
                 l[uv].uv = (c[(ax + 1) % 3], c[(ax + 2) % 3])
 
     def build(self):
-        scene = bpy.data.scenes.get(SCENE_NAME) or bpy.data.scenes.new(SCENE_NAME)
-        if bpy.context.window.scene != scene: bpy.context.window.scene = scene
+        scene = _work_scene()
         coll = bpy.data.collections.new(self.name)
         scene.collection.children.link(coll)
         objs, empties = [], {}
@@ -384,11 +421,78 @@ class Model:
             me.materials.append(mat(m))
             o = bpy.data.objects.new(name, me)
             coll.objects.link(o); objs.append(o)
-            if oname in self.pivots: o.location = U(self.pivots[oname])
+            if oname in self.pivots and not self.bones: o.location = U(self.pivots[oname])
             if g is not None: o.parent = empties[g]
         self.buckets = {}
         self.objs, self.coll, self.tris = objs, coll, tris
+        self.arm = None
+        if self.bones: self._build_armature(scene, coll)
+        if self.clips: self._build_animation(scene, empties)
         return objs
+
+    def _build_armature(self, scene, coll):
+        """Create the armature, then bind every mesh to it (each vertex fully to the bone it was added under)."""
+        data = bpy.data.armatures.new(self.name + "_Rig")
+        arm = bpy.data.objects.new("Armature", data)
+        coll.objects.link(arm)
+        bpy.context.view_layer.update()
+        bpy.context.view_layer.objects.active = arm
+        bpy.ops.object.mode_set(mode='EDIT')
+        made = {}
+        for name, head, tail, parent in self.bones:
+            eb = data.edit_bones.new(name)
+            eb.head, eb.tail, eb.roll = U(head), U(tail), 0.0
+            if parent is not None: eb.parent = made[parent]
+            made[name] = eb
+        bpy.ops.object.mode_set(mode='OBJECT')
+        for o in self.objs:
+            if o.type != 'MESH': continue
+            for name, _, _, _ in self.bones: o.vertex_groups.new(name=name)
+            mod = o.modifiers.new("Armature", 'ARMATURE')
+            mod.object = arm
+            o.parent = arm
+        self.objs.insert(0, arm)
+        self.arm = arm
+
+    def _build_animation(self, scene, empties):
+        scene.render.fps = self.fps
+        scene.frame_start = min(c[1] for c in self.clips)
+        scene.frame_end = max(c[2] for c in self.clips)
+        try: bpy.context.preferences.edit.keyframe_new_interpolation_type = 'LINEAR'
+        except Exception: pass
+        C = Matrix(((-1, 0, 0), (0, 0, -1), (0, 1, 0)))            # Unity -> Blender, as a matrix (its own inverse transpose)
+        Ci = C.inverted()
+        def rot_b(e): return C @ euler(*e).to_3x3() @ Ci           # Unity Euler -> Blender rotation matrix
+        if self.arm is not None:
+            last = {}
+            for frame, bones in sorted(self.pose_keys, key=lambda k: k[0]):
+                for name, val in bones.items():
+                    e, off = (val if isinstance(val[0], (tuple, list)) else (val, None))
+                    pb = self.arm.pose.bones[name]
+                    rest = self.arm.data.bones[name].matrix_local.to_3x3()
+                    q = (rest.inverted() @ rot_b(e) @ rest).to_quaternion()
+                    if name in last and last[name].dot(q) < 0: q.negate()
+                    last[name] = q.copy()
+                    pb.rotation_mode = 'QUATERNION'
+                    pb.rotation_quaternion = q
+                    pb.keyframe_insert("rotation_quaternion", frame=frame)
+                    if off is not None:
+                        pb.location = rest.inverted() @ U(off)
+                        pb.keyframe_insert("location", frame=frame)
+        targets = dict(empties)
+        for o in self.objs:
+            if o.type == 'MESH': targets.setdefault(o.name, o)
+        base = {}
+        for name, frame, off, e, sc in sorted(self.obj_keys, key=lambda k: k[1]):
+            o = targets[name]
+            if name not in base: base[name] = o.location.copy()
+            o.rotation_mode = 'XYZ'
+            o.location = base[name] + U(off)
+            o.rotation_euler = rot_b(e).to_euler('XYZ', o.rotation_euler)
+            sx, sy, sz = (sc, sc, sc) if isinstance(sc, (int, float)) else sc
+            o.scale = (sx, sz, sy)
+            for ch in ("location", "rotation_euler", "scale"): o.keyframe_insert(ch, frame=frame)
+        scene.frame_set(scene.frame_start)
 
     def export(self, keep=False):
         objs = self.build()
@@ -398,24 +502,44 @@ class Model:
         for o in bpy.context.view_layer.objects: o.select_set(False)
         for o in objs: o.select_set(True)
         bpy.context.view_layer.objects.active = objs[0]
-        bpy.ops.export_scene.fbx(
-            filepath=path, use_selection=True, global_scale=1.0, apply_unit_scale=True,
-            apply_scale_options='FBX_SCALE_UNITS', axis_forward='-Z', axis_up='Y', bake_space_transform=True,
-            object_types={'EMPTY', 'MESH'}, use_mesh_modifiers=True, mesh_smooth_type='FACE')
-        info = {"file": self.sub + "/" + self.name + ".fbx", "tris": self.tris, "objects": len(objs)}
+        sidecar = os.path.splitext(path)[0] + ".clips.json"
+        if self.clips:
+            # Animated model: one take over the whole timeline. "Apply Transform" is known to break armatures and
+            # animation, so it is off here; Unity gets the same result through the root objects' rotation.
+            bpy.ops.export_scene.fbx(
+                filepath=path, use_selection=True, global_scale=1.0, apply_unit_scale=True,
+                apply_scale_options='FBX_SCALE_UNITS', axis_forward='-Z', axis_up='Y', bake_space_transform=False,
+                object_types={'EMPTY', 'MESH', 'ARMATURE'}, use_mesh_modifiers=True, mesh_smooth_type='FACE',
+                add_leaf_bones=False, use_armature_deform_only=False, bake_anim=True, bake_anim_use_all_bones=True,
+                bake_anim_use_nla_strips=False, bake_anim_use_all_actions=False, bake_anim_force_startend_keying=True,
+                bake_anim_step=1.0, bake_anim_simplify_factor=0.0)
+            import json
+            with open(sidecar, "w") as f:      # read by PhaseXModelImportSettings to split the take into clips
+                json.dump({"fps": self.fps, "clips": [{"name": n, "first": a, "last": b, "loop": l} for n, a, b, l in self.clips]}, f, indent=1)
+        else:
+            bpy.ops.export_scene.fbx(
+                filepath=path, use_selection=True, global_scale=1.0, apply_unit_scale=True,
+                apply_scale_options='FBX_SCALE_UNITS', axis_forward='-Z', axis_up='Y', bake_space_transform=True,
+                object_types={'EMPTY', 'MESH'}, use_mesh_modifiers=True, mesh_smooth_type='FACE', bake_anim=False)
+            if os.path.exists(sidecar): os.remove(sidecar)
+        info = {"file": self.sub + "/" + self.name + ".fbx", "tris": self.tris, "objects": len(objs), "clips": [c[0] for c in self.clips]}
         if not keep: self.discard()
         return info
 
     def discard(self):
         for o in self.objs:
             me = o.data
+            act = o.animation_data.action if o.animation_data else None
             bpy.data.objects.remove(o)
-            if me is not None and me.users == 0: bpy.data.meshes.remove(me)
+            if act is not None and act.users == 0: bpy.data.actions.remove(act)
+            if me is not None and me.users == 0:
+                (bpy.data.armatures if isinstance(me, bpy.types.Armature) else bpy.data.meshes).remove(me)
         bpy.data.collections.remove(self.coll)
 
-    def preview(self, path, view=(0.55, 0.4, -1.0), res=640):
+    def preview(self, path, view=(0.55, 0.4, -1.0), res=640, frame=None):
         """Workbench render of the built model (call build() or export(keep=True) first)."""
-        scene = bpy.context.window.scene
+        scene = _work_scene()
+        if frame is not None: scene.frame_set(frame)
         lo, hi = Vector((1e9,) * 3), Vector((-1e9,) * 3)
         bpy.context.view_layer.update()
         for o in self.objs:
@@ -451,6 +575,14 @@ class Model:
         bpy.data.objects.remove(cam); bpy.data.cameras.remove(cam_data)
 
 
+def _work_scene():
+    """The scene the generator works in: its own scene in an interactive Blender, the startup scene with -b."""
+    if bpy.context.window is None: return bpy.context.scene
+    scene = bpy.data.scenes.get(SCENE_NAME) or bpy.data.scenes.new(SCENE_NAME)
+    if bpy.context.window.scene != scene: bpy.context.window.scene = scene
+    return scene
+
+
 REGISTRY = {}   # "Sub/name" -> builder function returning a Model
 
 
@@ -461,7 +593,7 @@ def model(sub, name):
     return deco
 
 
-def run(only=None, preview_dir=None, view=(0.55, 0.4, -1.0)):
+def run(only=None, preview_dir=None, view=(0.55, 0.4, -1.0), frames=None):
     """Build and export every registered model (or those whose key contains one of `only`)."""
     out = []
     for key, (sub, name, fn) in REGISTRY.items():
@@ -471,7 +603,10 @@ def run(only=None, preview_dir=None, view=(0.55, 0.4, -1.0)):
         info = m.export(keep=preview_dir is not None)
         if preview_dir is not None:
             os.makedirs(preview_dir, exist_ok=True)
-            m.preview(os.path.join(preview_dir, name + ".png"), view)
+            if frames:
+                for fr in frames: m.preview(os.path.join(preview_dir, "%s_f%03d.png" % (name, fr)), view, frame=fr)
+            else:
+                m.preview(os.path.join(preview_dir, name + ".png"), view)
             m.discard()
         out.append(info)
     return out

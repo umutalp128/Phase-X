@@ -6,7 +6,8 @@ namespace PhaseX.Player
     /// <summary>
     /// Playable engineer/astronaut for the 3D Mission Control station. Built on Unity's CharacterController:
     /// WASD (or arrows) to walk, Left Shift to sprint, mouse look with a vertical clamp, a subtle head bob with
-    /// footsteps, and [V] to toggle a third-person camera that shows the astronaut body.
+    /// footsteps, and [V] to toggle a third-person camera that shows the astronaut body, which plays Blender-authored
+    /// Idle / Walk / Run clips in step with the footsteps.
     /// The camera itself is driven by <see cref="GameViewModeManager"/>, which asks this class for the pose.
     /// </summary>
     [RequireComponent(typeof(CharacterController))]
@@ -38,6 +39,11 @@ namespace PhaseX.Player
         float _vy, _bobPhase, _bobAmount;
         Material _statusLightMat;
         int _lastStep;
+        AstronautAnimator _anim;
+        float _planarSpeed;
+
+        /// <summary>Strides walked so far (two footsteps per stride). Drives the footstep sounds and the walk / run clips.</summary>
+        public float GaitCycle => _bobPhase / (Mathf.PI * 2f);
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         static void ResetStatics() => Instance = null;
@@ -61,8 +67,18 @@ namespace PhaseX.Player
                     _statusLightMat = StationKit.Glow(StationKit.Cyan, 2.5f);
                     r.sharedMaterial = _statusLightMat;
                 }
+                // Idle / Walk / Run clips from the astronaut model, mixed at runtime (see AstronautAnimator)
+                _anim = AstronautAnimator.Attach(body);
                 body.SetActive(ThirdPerson);
             }
+        }
+
+        /// <summary>Pose the astronaut body for this frame (only matters in third person, when the body is shown).</summary>
+        void Animate(float dt)
+        {
+            if (_anim == null || !ThirdPerson) return;
+            float run01 = Mathf.InverseLerp(walkSpeed * 1.08f, sprintSpeed * 0.94f, _planarSpeed);
+            _anim.Tick(IsMoving, run01, GaitCycle, dt);
         }
 
         void OnDestroy()
@@ -129,7 +145,9 @@ namespace PhaseX.Player
             {
                 _vy = 0f;
                 IsMoving = false;
+                _planarSpeed = 0f;
                 _bobAmount = Mathf.Lerp(_bobAmount, 0f, dt * 8f);
+                Animate(dt);
                 return;
             }
 
@@ -139,6 +157,7 @@ namespace PhaseX.Player
 
             // head bob + footsteps (one step every half bob cycle)
             float planar = new Vector3(_cc.velocity.x, 0f, _cc.velocity.z).magnitude;
+            _planarSpeed = planar;
             IsMoving = _cc.isGrounded && planar > 0.4f;
             _bobAmount = Mathf.Lerp(_bobAmount, IsMoving ? 1f : 0f, dt * 8f);
             if (IsMoving)
@@ -147,6 +166,7 @@ namespace PhaseX.Player
                 int step = Mathf.FloorToInt(_bobPhase / Mathf.PI);
                 if (step != _lastStep) { _lastStep = step; StationAudio.Footstep(); }
             }
+            Animate(dt);
         }
 
         public void SetThirdPerson(bool on)

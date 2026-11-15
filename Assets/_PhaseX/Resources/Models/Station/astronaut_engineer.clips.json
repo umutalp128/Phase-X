@@ -1,0 +1,23 @@
+{
+ "fps": 30,
+ "clips": [
+  {
+   "name": "Idle",
+   "first": 0,
+   "last": 60,
+   "loop": true
+  },
+  {
+   "name": "Walk",
+   "first": 70,
+   "last": 100,
+   "loop": true
+  },
+  {
+   "name": "Run",
+   "first": 110,
+   "last": 130,
+   "loop": true
+  }
+ ]
+}

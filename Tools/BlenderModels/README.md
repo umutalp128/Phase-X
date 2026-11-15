@@ -8,7 +8,9 @@ Python scripts that build every 3D model of the game in Blender and export it as
 | `phasex_lib.py` | Mesh helpers (lathe, nozzle bell, ogive, bevelled box, arc plate, tile grid, helix, truss), the `Model` class and the FBX export |
 | `spacecraft.py` | 19 spacecraft modules: frame, 3 buses, Apollo hardware, power, propulsion, payloads, antennas |
 | `rockets.py` | 8 launch vehicles, each upright with its base on y = 0 and its nose at y = 1.6 |
-| `sim_station.py` | Lunar Module, rover and planet sphere for the flight sim; station furniture, service tower, astronaut |
+| `sim_station.py` | Lunar Module, rover and planet sphere for the flight sim; station furniture, room shell, service tower, rigged astronaut |
+| `animated.py` | Animated flight models: fairing / upper-stage separation rig, engine plume, impact flash |
+| `run_all.py` | Command-line entry for headless regeneration |
 
 ## Rules the game relies on
 
@@ -35,3 +37,25 @@ ns["run"](preview_dir="/tmp/previews")        # also write a preview PNG per mod
 ```
 
 The scripts work in their own scene (`PhaseX_Build`) and delete their objects after each export.
+
+### From the command line (no Blender window)
+
+```bash
+blender -b --python Tools/BlenderModels/run_all.py
+```
+
+Add `-- <filter>` to rebuild only some models (`-- Station/`, `-- astronaut_engineer`), and
+`--preview DIR --frames 0,15,30` to also write preview images at those frames.
+
+## Rigs and animation
+
+- `m.bone(name, head, tail, parent)` declares a bone (Unity coordinates). Geometry added while `m.b = name` is set
+  is skinned fully to that bone. A model with bones is exported with an armature and skinned meshes.
+- `m.pose(frame, {bone: (ex, ey, ez)})` keys bones; `m.key(object, frame, pos, rot, scale)` keys a group or named
+  object. Angles are Unity Euler degrees about the model's own axes: +X pitches forward, so a hanging limb swings
+  back for a positive angle.
+- `m.clip(name, first, last, loop)` names a frame range. The whole timeline is exported as one take, and
+  `<model>.clips.json` is written next to the `.fbx`; Unity's `PhaseXModelImportSettings` reads it and splits the
+  take into those clips. A model without clips is exported as a static mesh and gets no clip file.
+- Animated models are exported without "Apply Transform" (it breaks armatures and animation), so their objects
+  carry a -90 degree X rotation in Unity. `PhaseXModelLibrary` puts them inside a holder object for that reason.

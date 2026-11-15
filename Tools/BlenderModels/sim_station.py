@@ -192,6 +192,10 @@ def launch_console(m):
     m.torus(S_, (0.45, 1.065, 0.1), 0.1, 0.012, (0, 1, 0), 18, 6)
     m.named("StatusLight", (0.45, 1.14, 0.1))
     m.sph("Mat_GlowRed", (0.45, 1.14, 0.1), 0.1, 20, 10, n="StatusLight")
+    # "LeverPull": the T-handle swings 70 degrees towards the window. The game scrubs this clip by the lever angle.
+    for f in range(0, 36, 5):
+        m.key("LeverPivot", f, rot=(70.0 * f / 35, 0, 0))
+    m.clip("LeverPull", 0, 35)
 
 
 @model("Station", "station_briefing_board")
@@ -280,12 +284,33 @@ def service_tower(m):
 @model("Station", "astronaut_engineer")
 def astronaut(m):
     W, G, D, S_ = "Mat_White", "Mat_Grey", "Mat_Dark", "Mat_Silver"
-    # torso: hard upper torso, waist ring, hips
+    # ---- skeleton (the character faces +Z, so its left side is -X)
+    m.bone("pelvis", (0, 0.9, 0), (0, 1.0, 0))
+    m.bone("spine", (0, 1.0, 0), (0, 1.2, 0), "pelvis")
+    m.bone("chest", (0, 1.2, 0), (0, 1.45, 0), "spine")
+    m.bone("head", (0, 1.45, 0), (0, 1.8, 0), "chest")
+    JOINTS = {}
+    for s, sd in ((-1, "L"), (1, "R")):
+        sh, el, wr = V(s * 0.3, 1.32, 0), V(s * 0.37, 1.04, 0.02), V(s * 0.39, 0.8, 0.08)
+        hip, kn, an = V(s * 0.12, 0.86, 0), V(s * 0.13, 0.5, 0.02), V(s * 0.13, 0.13, 0)
+        JOINTS[sd] = (sh, el, wr, hip, kn, an)
+        m.bone("upperarm." + sd, sh, el, "chest")
+        m.bone("lowerarm." + sd, el, wr, "upperarm." + sd)
+        m.bone("hand." + sd, wr, wr + V(0, -0.1, 0.02), "lowerarm." + sd)
+        m.bone("thigh." + sd, hip, kn, "pelvis")
+        m.bone("calf." + sd, kn, an, "thigh." + sd)
+        m.bone("foot." + sd, an, V(s * 0.13, 0.02, 0.16), "calf." + sd)
+
+    # ---- torso: hard upper torso, waist ring, hips
+    m.b = "chest"
     m.box(W, (0, 1.17, 0), (0.5, 0.5, 0.34), bevel=0.11)
+    m.b = "pelvis"
     m.sph(W, (0, 0.9, 0), 0.2, 18, 9, scale=(1.05, 0.8, 0.8))
     m.lathe(S_, [(0.2, 0.93), (0.215, 0.95), (0.2, 0.97), (0.17, 0.95)], seg=24, closed=True, scale=(1.05, 1, 0.8))
-    # helmet with neck ring; the visor is its own mesh
+    # ---- helmet with neck ring; the visor is its own mesh
+    m.b = "chest"
     m.torus(S_, (0, 1.45, 0), 0.165, 0.024, (0, 1, 0), 24, 8)
+    m.b = "head"
     m.sph(W, (0, 1.62, 0), 0.19, 24, 12)
     m.sph(D, (0, 1.63, 0.07), 0.5, 20, 10, scale=(0.335, 0.275, 0.235))
     m.named("Visor", (0, 1.63, 0.09))
@@ -293,8 +318,10 @@ def astronaut(m):
     for s in (-1, 1):
         m.box(G, (s * 0.19, 1.7, 0.05), (0.04, 0.05, 0.08), bevel=0.008)          # helmet lamps
         m.box("Mat_GlowCyan", (s * 0.19, 1.7, 0.093), (0.028, 0.034, 0.008))
+    # ---- PLSS backpack, hoses, chest pack: all carried by the chest
+    m.b = "chest"
+    for s in (-1, 1):
         m.tube(G, [(s * 0.16, 1.36, -0.2), (s * 0.17, 1.46, -0.16), (s * 0.13, 1.52, -0.1)], 0.018, seg=8)   # life-support hoses
-    # PLSS backpack
     m.box(G, (0, 1.15, -0.25), (0.42, 0.56, 0.2), bevel=0.05)
     m.box(W, (0, 1.42, -0.24), (0.34, 0.1, 0.16), bevel=0.03)
     m.box(D, (0, 1.0, -0.355), (0.3, 0.16, 0.014), bevel=0.004)
@@ -305,8 +332,7 @@ def astronaut(m):
     m.sph("Mat_GlowGreen", (0.12, 1.33, -0.365), 0.03, 12, 6, n="BackpackStatusLight")
     m.cyl(S_, (-0.15, 1.42, -0.3), (-0.15, 1.76, -0.32), 0.006, seg=6)             # antenna
     m.sph("Mat_GlowAmber", (-0.15, 1.765, -0.32), 0.015, 8, 4)
-    # chest telemetry pack
-    m.box(G, (0, 1.2, 0.19), (0.26, 0.17, 0.08), bevel=0.02)
+    m.box(G, (0, 1.2, 0.19), (0.26, 0.17, 0.08), bevel=0.02)                       # chest telemetry pack
     m.box(SCREEN, (-0.035, 1.2, 0.232), (0.14, 0.09, 0.008))
     for i in range(3):
         m.box("Mat_GlowAmber" if i == 2 else "Mat_GlowGreen", (-0.08 + i * 0.045, 1.185 + i * 0.008, 0.238), (0.028, 0.03 + i * 0.016, 0.004))
@@ -315,21 +341,185 @@ def astronaut(m):
     m.box("Mat_GlowOrange", (0.17, 1.34, 0.168), (0.07, 0.07, 0.008), bevel=0.002)   # mission patch
     m.box("Mat_FlagBlue", (-0.345, 1.26, 0), (0.008, 0.06, 0.09))                     # shoulder flag
     m.box("Mat_FlagRed", (-0.346, 1.245, 0), (0.008, 0.012, 0.09))
-    for s in (-1, 1):
-        sh, el, wr = V(s * 0.3, 1.32, 0), V(s * 0.37, 1.04, 0.02), V(s * 0.39, 0.8, 0.08)
+    # ---- limbs
+    for s, sd in ((-1, "L"), (1, "R")):
+        sh, el, wr, hip, kn, an = JOINTS[sd]
+        m.b = "upperarm." + sd
         m.sph(W, sh, 0.105, 16, 8)
         m.cyl(W, sh, el, 0.08, 0.07, seg=14)
-        m.sph(W, el, 0.075, 14, 7)
         for t in (0.35, 0.65):                                                      # arm bellows
             m.torus(W, sh.lerp(el, t), 0.08, 0.012, el - sh, 14, 5)
+        m.b = "lowerarm." + sd
+        m.sph(W, el, 0.075, 14, 7)
         m.cyl(W, el, wr, 0.07, 0.06, seg=14)
         m.torus(S_, wr, 0.06, 0.012, wr - el, 14, 6)
+        m.b = "hand." + sd
         m.sph(G, wr + V(0, -0.07, 0.015), 0.068, 12, 6, scale=(0.9, 1.15, 1))      # glove
-        hip, kn, an = V(s * 0.12, 0.86, 0), V(s * 0.13, 0.5, 0.02), V(s * 0.13, 0.13, 0)
+        m.b = "thigh." + sd
+        m.sph(W, hip, 0.105, 14, 7)
         m.cyl(W, hip, kn, 0.1, 0.085, seg=16)
+        m.b = "calf." + sd
         m.sph(W, kn, 0.09, 14, 7)
         m.box(G, kn + V(0, 0, 0.075), (0.11, 0.12, 0.04), bevel=0.015)             # knee pad
         m.cyl(W, kn, an, 0.085, 0.075, seg=16)
         m.torus(S_, an + V(0, 0.01, 0), 0.078, 0.012, (0, 1, 0), 14, 6)
+        m.b = "foot." + sd
+        m.sph(W, an, 0.078, 12, 6)
         m.box(G, (s * 0.13, 0.065, 0.04), (0.17, 0.13, 0.31), bevel=0.04)          # boot
         m.box(D, (s * 0.13, 0.012, 0.04), (0.18, 0.024, 0.32), bevel=0.008)
+    m.b = None
+
+    # ---- animation. Angles are Unity Euler degrees about the character's own axes:
+    # +X pitches forward (a hanging limb swings BACK), so forward swings are negative; +Y turns right.
+    def gait(ph, A, K0, K1, B, E0, E1, lean, bob, twist):
+        sn, cs = math.sin(ph), math.cos(ph)
+        pose = {
+            "pelvis": ((lean * 0.4, twist * sn, 0), (0, bob * (math.cos(2 * ph) - 1), 0)),
+            "spine": (lean * 0.3, 0, 0),
+            "chest": (lean * 0.3, -twist * 1.4 * sn, 0),
+            "head": (-lean * 0.55, twist * 0.4 * sn, 0),
+        }
+        for sd, sg in (("L", 1.0), ("R", -1.0)):
+            th = -A * sg * sn                                   # thigh swing
+            knee = K0 + K1 * max(0.0, sg * cs) ** 1.5           # the knee folds while the leg swings forward
+            arm = B * sg * sn                                   # arms swing against the legs
+            pose["thigh." + sd] = (th, 0, 0)
+            pose["calf." + sd] = (knee, 0, 0)
+            pose["foot." + sd] = (max(-35.0, min(35.0, -(th + knee) * 0.8)), 0, 0)
+            pose["upperarm." + sd] = (arm, 0, 0)
+            pose["lowerarm." + sd] = (-(E0 + E1 * max(0.0, -sg * sn)), 0, 0)
+            pose["hand." + sd] = (0, 0, 0)
+        return pose
+
+    def idle(ph):
+        sn, cs = math.sin(ph), math.cos(ph)
+        pose = {
+            "pelvis": ((0, 0, 0.7 * sn), (0.006 * sn, -0.003 * (1 - cs), 0)),     # slow weight shift
+            "spine": (0.6 * cs, 0, -0.5 * sn),
+            "chest": (1.3 * cs, 0, -0.4 * sn),                                    # breathing
+            "head": (-1.0 * cs, 2.5 * sn, 0),
+        }
+        for sd, sg in (("L", 1.0), ("R", -1.0)):
+            pose["thigh." + sd] = (0, 0, -0.7 * sn)
+            pose["calf." + sd] = (0, 0, 0)
+            pose["foot." + sd] = (0, 0, 0)
+            pose["upperarm." + sd] = (1.5 * cs, 0, sg * (1.0 + 0.8 * cs))
+            pose["lowerarm." + sd] = (-6 - 1.5 * cs, 0, 0)
+            pose["hand." + sd] = (0, 0, 0)
+        return pose
+
+    for f in range(0, 61, 2): m.pose(f, idle(2 * math.pi * f / 60))
+    for f in range(0, 31): m.pose(70 + f, gait(2 * math.pi * f / 30, 26, 6, 42, 20, 12, 14, 4, 0.012, 5))
+    for f in range(0, 21): m.pose(110 + f, gait(2 * math.pi * f / 20, 44, 18, 80, 48, 70, 15, 16, 0.03, 9))
+    m.clip("Idle", 0, 60, loop=True)
+    m.clip("Walk", 70, 100, loop=True)
+    m.clip("Run", 110, 130, loop=True)
+
+
+# ------------------------------------------------------------------------------------------------ room shell
+
+def wall_run(m, length, ribs, clear=(), sign=False, conduits=True, x0=None, x1=None):
+    """
+    One wall in its own frame: x along the wall, inner face on z = 0, the room on the -z side. The slab is one
+    piece from end to end (and 0.2 past both ends, into the corners), so there is no joint to leak.
+    """
+    T_, WL, WD = "Mat_Trim", "Mat_Wall", "Mat_WallDark"
+    a = -length / 2 if x0 is None else x0
+    b = length / 2 if x1 is None else x1
+    m.box(WD, ((a + b) / 2, 2.5, 0.1), (b - a + 0.4, 5.2, 0.2))
+    m.box(T_, ((a + b) / 2, 0.11, -0.01), (b - a, 0.22, 0.02), bevel=0.006)                    # baseboard
+    m.box("Mat_Silver", ((a + b) / 2, 0.232, -0.008), (b - a, 0.012, 0.016))
+    m.box(T_, ((a + b) / 2, 4.9, -0.01), (b - a, 0.2, 0.02), bevel=0.006)                       # crown moulding
+    m.box(WD, ((a + b) / 2, 4.775, -0.006), (b - a, 0.05, 0.012))
+    for x in ribs:                                                                               # structural ribs
+        m.box(METAL, (x, 2.5, -0.045), (0.28, 4.56, 0.09), bevel=0.02)
+        m.box(T_, (x, 0.3, -0.05), (0.34, 0.16, 0.1), bevel=0.015)
+        m.box(T_, (x, 4.7, -0.05), (0.34, 0.16, 0.1), bevel=0.015)
+        m.box("Mat_GlowCyan", (x, 2.5, -0.092), (0.03, 3.4, 0.01), n="AccentStrips")
+    if conduits:                                                                                 # cable conduits under the crown
+        for y, r in ((4.6, 0.022), (4.535, 0.016)):
+            m.cyl("Mat_Silver", (a + 0.3, y, -0.115), (b - 0.3, y, -0.115), r, seg=8)
+        x = a + 1.0
+        while x < b - 0.5:
+            m.box(T_, (x, 4.57, -0.105), (0.05, 0.14, 0.05), bevel=0.008)
+            x += 2.0
+    edges = [a] + sorted(ribs) + [b]
+    for e0, e1 in zip(edges, edges[1:]):
+        lo, hi = e0 + 0.22, e1 - 0.22
+        w = hi - lo
+        c = (lo + hi) / 2
+        if w < 0.8 or any(c0 <= c <= c1 for c0, c1 in clear): continue
+        # lower tech panel: raised plate with a vent grille, a status readout and indicator lamps
+        m.box(WL, (c, 1.1, -0.015), (w, 1.5, 0.03), bevel=0.012)
+        gw = min(1.2, w * 0.45)
+        m.box(T_, (c - w / 2 + gw / 2 + 0.15, 0.75, -0.032), (gw, 0.5, 0.006))
+        for k in range(6):
+            m.box(WD, (c - w / 2 + gw / 2 + 0.15, 0.55 + k * 0.08, -0.037), (gw - 0.08, 0.03, 0.008))
+        m.box(T_, (c + w / 2 - 0.5, 1.5, -0.033), (0.62, 0.24, 0.008), bevel=0.003)
+        m.box(SCREEN, (c + w / 2 - 0.5, 1.5, -0.038), (0.54, 0.16, 0.004))
+        for k, mt in enumerate(("Mat_GlowGreen", "Mat_GlowGreen", "Mat_GlowAmber")):
+            m.box(mt, (c + w / 2 - 0.68 + k * 0.09, 1.28, -0.034), (0.05, 0.025, 0.008))
+        # upper acoustic panel: a grid of padded tiles in a recessed frame
+        top = 3.2 if sign else 4.35
+        ph = top - 2.05
+        m.box(T_, (c, 2.05 + ph / 2, -0.004), (w, ph, 0.008))
+        nu = max(1, int(round(w / 0.85)))
+        nv = max(1, int(round(ph / 0.75)))
+        m.tiles(WL, (c, 2.05 + ph / 2, -0.02), (1, 0, 0), (0, 1, 0), w - 0.06, ph - 0.06, nu, nv, thick=0.03, gap=0.03, bevel=0.012)
+
+
+@model("Station", "station_room_shell")
+def room_shell(m):
+    """Seamless walls, window wall, corner pilasters and coffered ceiling of the Mission Control room
+    (interior x -10..10, z -8..8, height 5). Station-root coordinates."""
+    T_, WD = "Mat_Trim", "Mat_WallDark"
+    m.named("AccentStrips", (0, 0, 0))
+    # south wall (z = -8): flat fascia behind the big wall sign
+    m.M = T((0, 0, -8)) @ euler(0, 180, 0)
+    wall_run(m, 20, [-8, -4, 0, 4, 8], sign=True)
+    m.box(T_, (0, 3.78, -0.05), (11.4, 0.95, 0.1), bevel=0.02)
+    m.box("Mat_Silver", (0, 3.27, -0.1), (11.4, 0.016, 0.012))
+    # west wall (x = -10): the CAD desk bay stays flat. Wall x runs along world +z.
+    m.M = T((-10, 0, 0)) @ euler(0, -90, 0)
+    wall_run(m, 16, [-6.2, -3.3, 0.3, 4.2], clear=[(-3.3, 0.3)])
+    # east wall (x = 10): the briefing board bay stays flat. Wall x runs along world -z.
+    m.M = T((10, 0, 0)) @ euler(0, 90, 0)
+    wall_run(m, 16, [-4.6, -1.1, 4.1, 6.4], clear=[(-1.1, 4.1)])
+    # north wall (z = 8): sill, header and two piers round the panoramic window
+    m.M = T((0, 0, 8))
+    WB, WT, WH = 0.9, 3.8, 7.5
+    m.box(WD, (0, WB / 2 - 0.05, 0.1), (20.4, WB + 0.1, 0.2))                                    # sill
+    m.box(WD, (0, (WT + 5.1) / 2, 0.1), (20.4, 5.1 - WT, 0.2))                                   # header
+    for s in (-1, 1):
+        m.box(WD, (s * (WH + 10.2) / 2, 2.5, 0.1), (10.2 - WH, 5.2, 0.2))                        # piers
+        m.box(METAL, (s * (WH + 0.16), (WB + WT) / 2, -0.045), (0.32, WT - WB, 0.09), bevel=0.02)   # window jambs
+        m.box("Mat_GlowCyan", (s * (WH + 0.16), (WB + WT) / 2, -0.092), (0.03, WT - WB - 0.5, 0.01), n="AccentStrips")
+        c = s * (WH + 0.32 + 10) / 2
+        w = 10 - WH - 0.32 - 0.3
+        m.box("Mat_Wall", (c, 1.1, -0.015), (w, 1.5, 0.03), bevel=0.012)
+        m.tiles("Mat_Wall", (c, 3.1, -0.02), (1, 0, 0), (0, 1, 0), w - 0.06, 2.2, 2, 3, thick=0.03, gap=0.03, bevel=0.012)
+    m.box(T_, (0, 0.11, -0.01), (20, 0.22, 0.02), bevel=0.006)
+    m.box(T_, (0, 4.95, -0.01), (20, 0.1, 0.02))
+    m.box(T_, (0, WB, -0.06), (WH * 2 + 0.2, 0.1, 0.3), bevel=0.02)                              # window ledge
+    m.box(T_, (0, WT, -0.02), (WH * 2 + 0.2, 0.1, 0.14), bevel=0.02)                             # window head
+    for i in range(-2, 3):
+        m.box(T_, (i * 3.75, (WB + WT) / 2, 0.08), (0.07, WT - WB, 0.1), bevel=0.012)            # mullions
+    m.box(METAL, (0, WB - 0.3, -0.012), (WH * 2, 0.34, 0.024), bevel=0.008)                      # sill fascia
+    for i in range(-7, 8):
+        m.box(WD, (i * 1.0, WB - 0.3, -0.026), (0.7, 0.18, 0.006))
+    m.M = Matrix.Identity(4)
+    # corner pilasters
+    for sx in (-1, 1):
+        for sz in (-1, 1):
+            m.box(METAL, (sx * 9.83, 2.5, sz * 7.83), (0.34, 5.0, 0.34), bevel=0.04)
+            m.box(T_, (sx * 9.81, 0.2, sz * 7.81), (0.42, 0.4, 0.42), bevel=0.03)
+            m.box(T_, (sx * 9.81, 4.8, sz * 7.81), (0.42, 0.4, 0.42), bevel=0.03)
+    # ceiling: one slab, coffer beams on the 4 m grid, an inset panel in every coffer
+    m.box("Mat_Ceiling", (0, 5.1, 0), (20.4, 0.2, 16.4))
+    for x in (-6, -2, 2, 6):
+        m.box(T_, (x, 4.965, 0), (0.16, 0.07, 16), bevel=0.012)
+    for z in (-4, 0, 4):
+        m.box(T_, (0, 4.965, z), (20, 0.07, 0.16), bevel=0.012)
+    for ix in range(5):
+        for iz in range(4):
+            m.box(WD, (-8 + ix * 4, 4.992, -6 + iz * 4), (3.4, 0.016, 3.4), bevel=0.005)

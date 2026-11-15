@@ -562,3 +562,47 @@ Who uses what:
   Solid colliders are invisible `Blocker` boxes, since models carry no colliders.
 
 `PhaseXModelImportSettings` (editor) imports these files as static meshes with their material names kept.
+
+## 13. Blender animation, effects and the room shell
+
+### Animated models
+A model is animated when the Blender scripts wrote `<model>.clips.json` beside its `.fbx`.
+`PhaseXModelImportSettings` then imports it as a Generic rig (no avatar) and splits the single take into the listed
+clips; every other model stays a static mesh. `PhaseXModelLibrary`:
+- `Clips(path)` / `Clip(path, name)` / `IsAnimated(path)` give the clips inside a model file.
+- `InstantiateModel` keeps the Animator of an animated model and returns a **holder** object with the imported rig
+  as its child. Position, rotation and scale go on the holder; never overwrite transforms inside the rig.
+
+Clips are played with runtime PlayableGraphs, never an Animator Controller asset:
+- `PhaseXClipPlayer.Attach(model, path, clip, loop, manual, speed)` plays one clip. In manual mode the owner sets
+  the time (`SetTime`, `SetNormalized`) each frame.
+- `AstronautAnimator` mixes three clips.
+
+| Model | Clips | Driven by |
+|---|---|---|
+| `Station/astronaut_engineer` (armature, 16 bones, skinned) | `Idle`, `Walk`, `Run` (loops) | `AstronautAnimator`, from `PhaseXPlayerController` |
+| `Station/station_launch_console` | `LeverPull` | `LaunchControlConsole`, scrubbed by the lever angle |
+| `Simulation/sim_separation` | `Separate` | `TrajectorySimulator.ApplySeparation`, scrubbed by simulation time |
+| `Simulation/fx_exhaust_plume` | `Flicker` (loop) | free-running; used by the flight rocket and the pad flame |
+| `Simulation/fx_impact_flash` | `Burst` | `TrajectorySimulator`, scrubbed over 0.9 s after `TriggerAlertFlash` |
+
+### Astronaut
+`PhaseXPlayerController.GaitCycle` counts strides from the same phase that fires `StationAudio.Footstep()`.
+`AstronautAnimator.Tick` sets the Walk and Run clip time from it (a quarter stride ahead, so boots land on the
+sound) and blends Idle / Walk / Run by movement and speed. It only runs in third person, when the body is shown.
+
+### Spacecraft separation
+`ApplySeparation(u)` is a pure function of simulation time: `u = (t - Segments[1].Start) / SepSeconds`. Before 0
+the rocket is shown; from 0 to 1 the rocket falls behind and shrinks, the rig plays `Separate`, and the player's
+spacecraft grows from 12 % to full size; after 1 only the spacecraft remains. Because it is recomputed in every
+`StepTo`, it follows pause, crisis holds and time warp, rewinds when the flight is stepped back, and needs no reset.
+
+### Room shell
+`Station/station_room_shell` holds the four walls (one slab each, overlapping at the corners), the window wall
+frame, corner pilasters, ribs, panels, conduits and the coffered ceiling. `StationBuilder.BuildShell` keeps the
+floor tiles, colliders, window glass, telemetry screen, status strips and lights, and adds colliders for the
+pilasters. The model's `AccentStrips` mesh joins `statusStrips`, so it changes colour with the mission state.
+Wall decoration is at most 0.1 m deep, and the bays behind the CAD desk and the briefing board are flat.
+
+New material names: `Mat_Wall`, `Mat_WallDark`, `Mat_Ceiling`, `Mat_Trim`, `Mat_FxCore`, `Mat_FxFlame`,
+`Mat_FxOuter`, `Mat_FxPuff`.

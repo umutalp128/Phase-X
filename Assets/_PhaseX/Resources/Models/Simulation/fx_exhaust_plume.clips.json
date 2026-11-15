@@ -1,0 +1,11 @@
+{
+ "fps": 30,
+ "clips": [
+  {
+   "name": "Flicker",
+   "first": 0,
+   "last": 24,
+   "loop": true
+  }
+ ]
+}

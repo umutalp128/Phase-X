@@ -579,6 +579,42 @@ Architecture notes are in `ARCHITECTURE.md` section 11.
   (and the other engine components the game creates from code) in player builds.
 - Verified: compiles with zero errors and warnings. **Not verified:** a new web build.
 
+## Blender animation, effects and seamless walls (2026-11-15)
+
+- **Pipeline:** `phasex_lib.py` gained armatures with skinning, bone and object keyframes, named clips and animated
+  FBX export; `run_all.py` regenerates models headless (`blender -b`). The importer reads `<model>.clips.json`
+  and imports those models as Generic rigs with clips; `PhaseXModelLibrary` keeps their Animator.
+- **Separation and effects:** new `sim_separation` (fairing halves, upper stage, cold-gas puffs, clip `Separate`),
+  `fx_exhaust_plume` (layered plume, clip `Flicker`), `fx_impact_flash` (clip `Burst`). The flight sim plays the
+  separation from simulation time instead of swapping rocket and spacecraft in one frame; the sphere effects
+  (exhaust glow, crisis flash, pad flame) are replaced.
+- **Room:** new `station_room_shell` replaces the wall, window-frame and ceiling primitives. No panel joints.
+- **Astronaut:** `astronaut_engineer` now has a 16-bone armature and `Idle`, `Walk`, `Run` clips, mixed at runtime
+  by the new `AstronautAnimator` and locked to the footstep sounds.
+- **Lever:** `station_launch_console` has a `LeverPull` clip, scrubbed by the lever angle.
+- New scripts: `PhaseXClipPlayer`, `AstronautAnimator`, `Tools/BlenderModels/animated.py`, `run_all.py`.
+
+### Differences from the request
+- The separation uses one dedicated fairing / upper-stage rig for all launchers (carbon-coloured for Electron and
+  Firefly Alpha) rather than splitting each of the 8 rocket models.
+- "Fade out" is done by the parts drifting off and shrinking to nothing; the materials are not alpha-faded.
+- Clips are frame ranges of one take, split on import from a sidecar file, instead of separate Blender actions.
+- The floor stays as tiles over a grout slab (it never had gaps). The warning beacon, hologram ring and pod ring
+  stay code-driven, because they follow game state; only the lever was moved to a clip.
+- The astronaut is rigidly skinned: each part follows one bone, with spheres covering the joints.
+
+### Verified
+- Batch play-test with a temporary harness (deleted), scratch save file: zero compiler errors or warnings, zero
+  runtime errors or warnings.
+- Clips import with the right names and lengths; bones move in Walk and Run; the lever reaches 70 degrees.
+- Separation checked at seven points: rocket shrinks away, fairing halves open, spacecraft grows to full size,
+  the rig hides afterwards, and stepping back restores the rocket. References are cleared when the flight ends.
+- Screenshots checked: all four walls, two corners, ceiling, a wall close-up, six astronaut poses, separation
+  sequence for Falcon 9 and Electron, engine plume in flight and on the pad, impact flash.
+- **Not verified:** motion as such (only still frames); footstep timing by ear; the animation while actually
+  walking with the keyboard; the flash colours after their last change; a standalone or web build with the
+  animated models.
+
 ### Next phases (planned)
 - (On hold) Phase 4: 4-player co-op role ownership and segment sign-off; campaign unlocks; save progress.
 - (On hold) Phase 5: polish, audio, accessibility, standalone builds, demo script.

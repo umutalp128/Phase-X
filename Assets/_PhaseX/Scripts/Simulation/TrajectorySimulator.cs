@@ -50,12 +50,28 @@ public class TrajectorySimulator : MonoBehaviour
     }
 
     Transform _flash;
+    PhaseXClipPlayer _flashClip;
     float _flashT = -1f;
+    const float FlashSeconds = 0.9f;
+
+    /// <summary>Crisis impact at the spacecraft: plays the flash model's "Burst" clip, tinted with the crisis colour.</summary>
     public void TriggerAlertFlash(Color c)
     {
         _flashT = 0f;
-        if (_flash != null) _flash.GetComponent<Renderer>().sharedMaterial = PhaseXMaterials.Lit(c, 0.2f, 0f, c * 3f);
+        if (_flash == null) return;
+        // spikes and ring in the crisis colour, core and sparks a hotter, paler version of it
+        var tint = PhaseXMaterials.Lit(c, 0.2f, 0f, c * 1.5f);
+        Color hot = Color.Lerp(c, Color.white, 0.45f);
+        var core = PhaseXMaterials.Lit(hot, 0.2f, 0f, hot * 2.2f);
+        foreach (var r in _flash.GetComponentsInChildren<Renderer>(true))
+            r.sharedMaterial = r.name == "FlashCore" || r.name == "FlashSparks" ? core : tint;
     }
+
+    // Stage separation: the fairing / upper-stage rig and how long its "Separate" clip takes in simulation seconds.
+    Transform _sepRig;
+    PhaseXClipPlayer _sepClip;
+    Vector3 _rocketScale, _modelScale;
+    const float SepSeconds = 3.2f;
 
     ProceduralSpacecraftView _design;
     Camera _cam;
@@ -146,6 +162,7 @@ public class TrajectorySimulator : MonoBehaviour
         _lines.Clear();
         _root = null;
         _dockedLm = null; _dockedAlsep = null; _stowedRover = null;
+        _sepRig = null; _sepClip = null; _flash = null; _flashClip = null; _flashT = -1f;
         if (_cam != null) _cam.fieldOfView = 42f;
         _design?.SetDesignVisible(true);
     }
@@ -241,10 +258,14 @@ public class TrajectorySimulator : MonoBehaviour
                 else if (Plan.Crewed && t.name == "Module_pl_apollo_alsep") _dockedAlsep = t;
                 else if (!Plan.Crewed && t.name == "Module_pl_rover") _stowedRover = t;
             }
+        _modelScale = _model.localScale;
         _model.gameObject.SetActive(false);
         _rocket = BuildRocket(_craft, lv);
-        _flash = Prim(PrimitiveType.Sphere, _craft, Vector3.zero, Vector3.one, Vector3.zero,
-            PhaseXMaterials.Lit(new Color(1f, 0.4f, 0.2f), 0.2f, 0f, new Color(4f, 1.2f, 0.4f)));
+        _rocketScale = _rocket.localScale;
+        BuildSeparationRig(lv);
+        // crisis impact flash: a Blender effect mesh with a "Burst" clip, scrubbed in Update
+        _flash = PhaseXModelLibrary.InstantiateModel("Simulation/fx_impact_flash", _craft, Vector3.zero, Quaternion.identity, Vector3.one).transform;
+        _flashClip = PhaseXClipPlayer.Attach(_flash.gameObject, "Simulation/fx_impact_flash", "Burst", false, true);
         _flash.gameObject.SetActive(false);
         _marker = Prim(PrimitiveType.Sphere, _craft, Vector3.zero, Vector3.one * 0.3f, Vector3.zero,
             PhaseXMaterials.Lit(new Color(1f, 0.85f, 0.4f), 0.5f, 0f, new Color(1.6f, 1.1f, 0.35f)));
@@ -287,9 +308,74 @@ public class TrajectorySimulator : MonoBehaviour
         root.localScale = Vector3.one * 0.46f * s;
         const float h = PhaseXModelLibrary.RocketModelHeight;
         PhaseXModelLibrary.InstantiateModel("Rockets/" + id, root, new Vector3(0, 0, -h * 0.5f), Quaternion.Euler(90f, 0f, 0f));
-        Prim(PrimitiveType.Sphere, root, new Vector3(0, 0, -h * 0.5f - 0.12f), new Vector3(0.11f, 0.11f, 0.36f), Vector3.zero,
-            PhaseXMaterials.Lit(new Color(1f, 0.6f, 0.2f), 0.5f, 0f, new Color(3f, 1.4f, 0.3f))).name = "ExhaustGlow";
+        // engine plume: layered Blender effect mesh pointing back along -Z, flickering through its looping clip
+        var plume = PhaseXModelLibrary.InstantiateModel("Simulation/fx_exhaust_plume", root, new Vector3(0, 0, -h * 0.5f + 0.02f),
+            Quaternion.Euler(90f, 0f, 0f), new Vector3(0.62f, 0.5f, 0.62f));
+        plume.name = "ExhaustPlume";
+        PhaseXClipPlayer.Attach(plume, "Simulation/fx_exhaust_plume", "Flicker", true, false, 1.5f);
         return root;
+    }
+
+    /// <summary>
+    /// The fairing and upper stage that come apart at spacecraft separation. The rig sits where the rocket's own
+    /// fairing is (nose towards +Z) and stays hidden until the separation starts (see ApplySeparation).
+    /// </summary>
+    void BuildSeparationRig(SpacecraftPart lv)
+    {
+        const string path = "Simulation/sim_separation";
+        var root = new GameObject("SeparationRig").transform;
+        root.SetParent(_craft, false);
+        root.localScale = _rocketScale * 1.5f;            // a little larger than life, so the event reads from the chase camera
+        const float h = PhaseXModelLibrary.RocketModelHeight;
+        var rig = PhaseXModelLibrary.InstantiateModel(path, root, new Vector3(0, 0, (h * 0.5f - 0.4f) / 1.5f), Quaternion.Euler(90f, 0f, 0f));
+        // carbon-composite launchers get a carbon fairing
+        string id = lv != null ? lv.Id : "";
+        if (id == "lv_small" || id == "lv_firefly_alpha")
+        {
+            var white = PhaseXModelLibrary.MaterialFor("Mat_White");
+            var carbon = PhaseXModelLibrary.MaterialFor("Mat_Carbon");
+            foreach (var r in rig.GetComponentsInChildren<Renderer>(true))
+                if (r.sharedMaterial == white) r.sharedMaterial = carbon;
+        }
+        _sepClip = PhaseXClipPlayer.Attach(rig, path, "Separate", false, true);
+        _sepRig = root;
+        _sepRig.gameObject.SetActive(false);
+    }
+
+    static float Smooth01(float x)
+    {
+        x = Mathf.Clamp01(x);
+        return x * x * (3f - 2f * x);
+    }
+
+    /// <summary>
+    /// Spacecraft separation, as a pure function of simulation time (so it follows pause, crisis holds and time warp,
+    /// and rewinds when the flight is stepped back). <paramref name="u"/> runs 0 to 1 over the separation:
+    /// the spent rocket falls behind and shrinks away, the fairing halves and upper stage play their Blender clip,
+    /// and the player's spacecraft grows out of the opening fairing to its flight size.
+    /// </summary>
+    void ApplySeparation(float u)
+    {
+        bool before = u < 0f, after = u >= 1f;
+        if (_rocket != null)
+        {
+            float fall = Smooth01(u / 0.55f);
+            bool show = before || (!after && fall < 0.999f);
+            if (_rocket.gameObject.activeSelf != show) _rocket.gameObject.SetActive(show);
+            _rocket.localPosition = before ? Vector3.zero : new Vector3(0f, 0f, -1.4f * fall);
+            _rocket.localScale = before ? _rocketScale : _rocketScale * (1f - fall);
+        }
+        if (_sepRig != null)
+        {
+            bool show = !before && !after;
+            if (_sepRig.gameObject.activeSelf != show) _sepRig.gameObject.SetActive(show);
+            if (show && _sepClip != null) _sepClip.SetNormalized(u);
+        }
+        if (_model != null)
+        {
+            if (_model.gameObject.activeSelf == before) _model.gameObject.SetActive(!before);
+            _model.localScale = after ? _modelScale : _modelScale * Mathf.Lerp(0.12f, 1f, Smooth01((u - 0.12f) / 0.75f));
+        }
     }
 
     LineRenderer Line(string name, Transform parent, Color c, bool world, bool loop)
@@ -343,9 +429,9 @@ public class TrajectorySimulator : MonoBehaviour
         if (_flashT >= 0f)
         {
             _flashT += Time.unscaledDeltaTime;
-            float k = _flashT / 0.9f;
+            float k = _flashT / FlashSeconds;
             _flash.gameObject.SetActive(k < 1f);
-            if (k < 1f) _flash.localScale = Vector3.one * Mathf.Sin(k * Mathf.PI) * 1.6f;
+            if (k < 1f) { if (_flashClip != null) _flashClip.SetNormalized(k); }
             else _flashT = -1f;
         }
     }
@@ -373,8 +459,7 @@ public class TrajectorySimulator : MonoBehaviour
             }
             if (_lastSegment == 1)
             {
-                _rocket.gameObject.SetActive(false);
-                _model.gameObject.SetActive(true);
+                // the hand-over from rocket to spacecraft is animated by ApplySeparation below
                 if (Plan.Mode != FlightMode.LeoOnly) AddLog(seg.MetStartH, "Payload fairing jettisoned. Spacecraft separated from the upper stage.");
             }
         }
@@ -405,6 +490,7 @@ public class TrajectorySimulator : MonoBehaviour
         if (v.sqrMagnitude > 1e-8f) _velDir = v.normalized;
         _craft.localPosition = pos;
         _craft.rotation = Quaternion.LookRotation(_velDir, Vector3.up);
+        ApplySeparation(Plan.Segments.Count > 1 ? (t - Plan.Segments[1].Start) / SepSeconds : -1f);
         if (_model != null) _model.localRotation = Quaternion.Euler(0f, t * 25f, 0f); // slow roll for visual interest
 
         // the world-space trail would smear into a helix behind the moving Moon, so only draw it until capture

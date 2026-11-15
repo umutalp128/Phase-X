@@ -18,6 +18,7 @@ public static class PhaseXModelLibrary
     static readonly Dictionary<string, GameObject> Prefabs = new Dictionary<string, GameObject>();
     static readonly Dictionary<string, Material> Materials = new Dictionary<string, Material>();
     static readonly HashSet<string> Reported = new HashSet<string>();
+    static readonly Dictionary<string, Dictionary<string, AnimationClip>> ClipSets = new Dictionary<string, Dictionary<string, AnimationClip>>();
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     static void ResetStatics()
@@ -25,7 +26,26 @@ public static class PhaseXModelLibrary
         Prefabs.Clear();
         Materials.Clear();
         Reported.Clear();
+        ClipSets.Clear();
     }
+
+    /// <summary>The animation clips inside a model file, by name ("Idle", "Walk", ...). Empty for a static model.</summary>
+    public static Dictionary<string, AnimationClip> Clips(string modelPath)
+    {
+        if (ClipSets.TryGetValue(modelPath ?? "", out var set)) return set;
+        set = new Dictionary<string, AnimationClip>();
+        if (!string.IsNullOrEmpty(modelPath))
+            foreach (var clip in Resources.LoadAll<AnimationClip>("Models/" + modelPath))
+                if (clip != null && !clip.name.StartsWith("__preview__")) set[clip.name] = clip;
+        ClipSets[modelPath ?? ""] = set;
+        return set;
+    }
+
+    public static AnimationClip Clip(string modelPath, string clipName) =>
+        Clips(modelPath).TryGetValue(clipName, out var clip) ? clip : null;
+
+    /// <summary>True for a model that carries animation clips (it is instantiated with its Animator kept).</summary>
+    public static bool IsAnimated(string modelPath) => Clips(modelPath).Count > 0;
 
     /// <summary>The imported model, or null if Resources/Models/&lt;modelPath&gt; does not exist.</summary>
     public static GameObject Load(string modelPath)
@@ -44,6 +64,9 @@ public static class PhaseXModelLibrary
     /// animators that an import may have added are removed. <paramref name="ledA"/>, <paramref name="ledB"/> and
     /// <paramref name="rtgGlow"/> are the caller's animated materials for Mat_LedA, Mat_LedB and Mat_RtgGlow.
     /// A missing model is reported once and an empty object is returned, so callers never get null.
+    /// <para>An animated model (one with clips) keeps its Animator and is returned inside a holder object: position,
+    /// rotation and scale go on the holder, and the imported rig below it keeps the transforms its clips expect.
+    /// Play its clips with <see cref="PhaseXClipPlayer"/> or a PlayableGraph on the Animator in its children.</para>
     /// </summary>
     public static GameObject InstantiateModel(string modelPath, Transform parent, Vector3 localPos = default, Quaternion localRot = default,
         Vector3? localScale = null, Material ledA = null, Material ledB = null, Material rtgGlow = null)
@@ -57,6 +80,16 @@ public static class PhaseXModelLibrary
                 Debug.LogError($"[PhaseX] 3D model \"Resources/Models/{modelPath}.fbx\" is missing. Re-run the scripts in Tools/BlenderModels.");
             go = new GameObject(name);
             go.transform.SetParent(parent, false);
+        }
+        else if (IsAnimated(modelPath))
+        {
+            go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            var rig = Object.Instantiate(prefab, go.transform, false);
+            rig.name = name + "_Rig";
+            var animator = rig.GetComponent<Animator>();
+            if (animator == null) animator = rig.AddComponent<Animator>();
+            animator.applyRootMotion = false;
         }
         else
         {
@@ -72,7 +105,8 @@ public static class PhaseXModelLibrary
         foreach (var c in go.GetComponentsInChildren<Collider>(true)) StationKit.Kill(c);
         foreach (var c in go.GetComponentsInChildren<Light>(true)) StationKit.Kill(c);
         foreach (var c in go.GetComponentsInChildren<Camera>(true)) StationKit.Kill(c);
-        foreach (var c in go.GetComponentsInChildren<Animator>(true)) StationKit.Kill(c);
+        if (!IsAnimated(modelPath))      // animated models keep their Animator; a static one never needs it
+            foreach (var c in go.GetComponentsInChildren<Animator>(true)) StationKit.Kill(c);
         BindMaterials(go, ledA, ledB, rtgGlow);
         return go;
     }
@@ -185,6 +219,15 @@ public static class PhaseXModelLibrary
             case "Mat_LedB": m = Glow(new Color(1f, 0.68f, 0.18f), 2.5f); break;
             case "Mat_RtgGlow": m = Glow(new Color(1f, 0.42f, 0.1f)); break;
             case "Mat_Beam": m = StationKit.Ghost(new Color(0.3f, 0.8f, 1f, 0.07f)); break;
+            case "Mat_Wall": m = PhaseXMaterials.Lit(new Color(0.17f, 0.2f, 0.25f), 0.35f, 0.1f); break;
+            case "Mat_WallDark": m = PhaseXMaterials.Lit(new Color(0.1f, 0.115f, 0.145f), 0.4f, 0.2f); break;
+            case "Mat_Ceiling": m = PhaseXMaterials.Lit(new Color(0.07f, 0.08f, 0.1f), 0.3f, 0.1f); break;
+            case "Mat_Trim": m = PhaseXMaterials.Lit(new Color(0.05f, 0.055f, 0.07f), 0.6f, 0.6f); break;
+            // effect meshes: a white-hot opaque core inside alpha-blended flame layers
+            case "Mat_FxCore": m = PhaseXMaterials.Lit(new Color(1f, 0.9f, 0.7f), 0.5f, 0f, new Color(5f, 4.2f, 2.6f)); break;
+            case "Mat_FxFlame": m = StationKit.Ghost(new Color(1f, 0.58f, 0.16f, 0.62f)); break;
+            case "Mat_FxOuter": m = StationKit.Ghost(new Color(1f, 0.32f, 0.08f, 0.26f)); break;
+            case "Mat_FxPuff": m = StationKit.Ghost(new Color(0.9f, 0.95f, 1f, 0.42f)); break;
             default:
                 if (Reported.Add("material:" + key))
                     Debug.LogWarning($"[PhaseX] Model material \"{materialName}\" has no runtime material in PhaseXModelLibrary; using aluminium.");

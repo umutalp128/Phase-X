@@ -34,6 +34,8 @@ namespace PhaseX.Station
         ParticleSystem _smoke;
         GameObject _padModel;
         string _padModelId;
+        PhaseXClipPlayer _lever;      // the console model's "LeverPull" clip, scrubbed by the lever angle
+        const float LeverTravel = 70f;
 
         public Vector3 RocketTop => rocket != null ? rocket.position + Vector3.up * rocketHeight * rocket.localScale.y : transform.position;
         public float RocketAltitude => _liftT < 0f ? 0f : 0.5f * Accel * _liftT * _liftT;
@@ -48,6 +50,10 @@ namespace PhaseX.Station
             if (flame != null) flame.gameObject.SetActive(false);
             if (flameLight != null) flameLight.enabled = false;
             BuildSmoke();
+            var model = transform.Find("station_launch_console");
+            if (model != null) _lever = PhaseXClipPlayer.Attach(model.gameObject, "Station/station_launch_console", "LeverPull", false, true);
+            // the engine plume flickers through its own looping clip
+            if (flame != null) PhaseXClipPlayer.Attach(flame.gameObject, "Simulation/fx_exhaust_plume", "Flicker", true, false, 1.6f);
         }
 
         void OnDestroy() => StationKit.Kill(_lightMat);
@@ -127,7 +133,7 @@ namespace PhaseX.Station
 
         // ---------------------------------------------------------------- launch sequence hooks (driven by GameViewModeManager)
 
-        public void PullLever() => _leverTarget = 70f;
+        public void PullLever() => _leverTarget = LeverTravel;
 
         public void Ignite()
         {
@@ -145,8 +151,9 @@ namespace PhaseX.Station
             if (flame != null)
             {
                 float f = 0.85f + 0.3f * Mathf.PerlinNoise(Time.time * 30f, 0f);
-                flame.localScale = new Vector3(2.6f, 9f * f, 2.6f);
-                flame.localPosition = new Vector3(0, -4.5f * f, 0);
+                // the plume model is 1 long with its nozzle at the origin: stretch it to about 9 m under the rocket
+                flame.localScale = new Vector3(8f, 9f * f, 8f);
+                flame.localPosition = Vector3.zero;
             }
             if (flameLight != null) flameLight.intensity = 60f + 40f * Mathf.PerlinNoise(Time.time * 25f, 1f);
             if (_smoke != null && t > 3.5f && _smoke.isEmitting) _smoke.Stop(true, ParticleSystemStopBehavior.StopEmitting);
@@ -168,7 +175,8 @@ namespace PhaseX.Station
             float dt = Time.deltaTime;
             float target = _leverTarget + (Time.time < _jiggleUntil ? Mathf.Sin(Time.time * 40f) * 8f + 10f : 0f);
             _leverAngle = Mathf.Lerp(_leverAngle, target, dt * 10f);
-            if (leverPivot != null) leverPivot.localRotation = Quaternion.Euler(_leverAngle, 0f, 0f);
+            if (_lever != null) _lever.SetNormalized(_leverAngle / LeverTravel);
+            else if (leverPivot != null) leverPivot.localRotation = Quaternion.Euler(_leverAngle, 0f, 0f);
 
             var st = MissionControlStation.Instance;
             bool ready = _calc != null && _calc.Report.MissionReady;

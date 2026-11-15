@@ -16,7 +16,7 @@ public static class PhaseXBuildPreserve
     static readonly System.Type[] Kept =
     {
         typeof(BoxCollider), typeof(SphereCollider), typeof(CapsuleCollider), typeof(MeshCollider), typeof(CharacterController),
-        typeof(MeshFilter), typeof(MeshRenderer), typeof(LineRenderer), typeof(TrailRenderer),
+        typeof(MeshFilter), typeof(MeshRenderer), typeof(SkinnedMeshRenderer), typeof(Animator), typeof(LineRenderer), typeof(TrailRenderer),
         typeof(ParticleSystem), typeof(ParticleSystemRenderer), typeof(TextMesh), typeof(Light), typeof(AudioSource), typeof(AudioListener),
     };
 
