@@ -170,6 +170,25 @@ namespace PhaseX.Station
             return tm;
         }
 
+        /// <summary>
+        /// Shrink a single-line text so it is at most <paramref name="maxWidth"/> metres wide. Call it after every
+        /// text change; <paramref name="lineHeight"/> is the size the text was created with (its largest size).
+        /// </summary>
+        public static void FitWidth(TextMesh tm, float lineHeight, float maxWidth)
+        {
+            if (tm == null) return;
+            float full = lineHeight * 10f / 64f * 0.86f;       // the character size Text() gives this line height
+            tm.characterSize = full;
+            var font = tm.font != null ? tm.font : BuiltinFont;
+            if (font == null || string.IsNullOrEmpty(tm.text)) return;
+            font.RequestCharactersInTexture(tm.text, tm.fontSize, tm.fontStyle);
+            float advance = 0f;
+            foreach (char ch in tm.text)
+                if (font.GetCharacterInfo(ch, out var info, tm.fontSize, tm.fontStyle)) advance += info.advance;
+            float width = advance * full * 0.1f;               // TextMesh: one font pixel is characterSize / 10 metres
+            if (width > maxWidth) tm.characterSize = full * maxWidth / width;
+        }
+
         public static void ApplyFont(TextMesh tm)
         {
             if (tm == null) return;

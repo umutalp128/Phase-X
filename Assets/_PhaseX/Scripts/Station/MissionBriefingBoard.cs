@@ -47,7 +47,11 @@ namespace PhaseX.Station
         {
             if (_calc == null || _calc.CurrentScenario == null) return;
             var sc = _calc.CurrentScenario;
-            if (titleText != null) titleText.text = sc.Title.ToUpperInvariant();
+            if (titleText != null)
+            {
+                titleText.text = sc.Title.ToUpperInvariant();
+                StationKit.FitWidth(titleText, 0.26f, 4.1f);     // long mission titles shrink to stay on the board
+            }
             if (bodyText != null)
                 bodyText.text = StationKit.Col("OBJECTIVE", StationKit.Amber) + "\n" + StationKit.Wrap(sc.Objective, 46) + "\n\n" +
                                 StationKit.Col($"BUDGET {MissionCalculator.Money(sc.MaxBudget)}    SCIENCE {sc.TargetScience:0} pts    LIFE {sc.RequiredLifetimeMonths:0} mo", StationKit.Cyan) + "\n" +

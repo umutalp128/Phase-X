@@ -615,6 +615,13 @@ Architecture notes are in `ARCHITECTURE.md` section 11.
   walking with the keyboard; the flash colours after their last change; a standalone or web build with the
   animated models.
 
+## Briefing board: long mission titles fit (2026-11-15)
+
+- `StationKit.FitWidth` shrinks a one-line 3D text to a maximum width, measured from the font's character advances.
+  `MissionBriefingBoard` uses it for the title (at most 4.1 m).
+- Verified in a batch play-test: all 10 titles measured on the board, the five long ones are exactly 4.10 m wide and
+  the rest keep their full size; screenshot of mission 2 checked. Zero errors or warnings.
+
 ### Next phases (planned)
 - (On hold) Phase 4: 4-player co-op role ownership and segment sign-off; campaign unlocks; save progress.
 - (On hold) Phase 5: polish, audio, accessibility, standalone builds, demo script.
