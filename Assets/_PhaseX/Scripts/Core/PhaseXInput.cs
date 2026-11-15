@@ -10,7 +10,7 @@ using UnityEngine.InputSystem;
 /// </summary>
 public static class PhaseXInput
 {
-    public enum K { F1, F2, F3, F4, F5, F6, F7, F8, F9, D1, D2, D3, D4, D5, Space, Enter, Escape, C, Z, X, Tab, W, A, S, D, E, V, Shift, Left, Right, Up, Down, Backspace }
+    public enum K { F1, F2, F3, F4, F5, F6, F7, F8, F9, D1, D2, D3, D4, D5, Space, Enter, Escape, C, Z, X, Tab, W, A, S, D, E, V, Shift, Left, Right, Up, Down, Backspace, T }
 
     public static bool Down(K k)
     {
@@ -46,6 +46,7 @@ public static class PhaseXInput
             case K.D: return kb.dKey.wasPressedThisFrame;
             case K.E: return kb.eKey.wasPressedThisFrame;
             case K.V: return kb.vKey.wasPressedThisFrame;
+            case K.T: return kb.tKey.wasPressedThisFrame;
             case K.Shift: return kb.leftShiftKey.wasPressedThisFrame || kb.rightShiftKey.wasPressedThisFrame;
             case K.Left: return kb.leftArrowKey.wasPressedThisFrame;
             case K.Right: return kb.rightArrowKey.wasPressedThisFrame;
@@ -84,6 +85,7 @@ public static class PhaseXInput
             case K.D: return Input.GetKeyDown(KeyCode.D);
             case K.E: return Input.GetKeyDown(KeyCode.E);
             case K.V: return Input.GetKeyDown(KeyCode.V);
+            case K.T: return Input.GetKeyDown(KeyCode.T);
             case K.Shift: return Input.GetKeyDown(KeyCode.LeftShift) || Input.GetKeyDown(KeyCode.RightShift);
             case K.Left: return Input.GetKeyDown(KeyCode.LeftArrow);
             case K.Right: return Input.GetKeyDown(KeyCode.RightArrow);

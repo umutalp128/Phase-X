@@ -170,6 +170,17 @@ public partial class PhaseXRuntimeUI
         }
     }
 
+    /// <summary>Filled diamond (a square standing on its corner) from one-pixel rows.</summary>
+    static void Diamond(float cx, float cy, float radius, Color c)
+    {
+        int n = Mathf.CeilToInt(radius);
+        for (int i = -n; i < n; i++)
+        {
+            float hw = radius - Mathf.Abs(i + 0.5f);
+            if (hw > 0f) Fill(new Rect(cx - hw, cy + i, hw * 2f, 1.6f), c);     // rows overlap, so a scaled canvas leaves no gaps
+        }
+    }
+
     /// <summary>Straight line from small squares (works at any angle without rotating the GUI).</summary>
     static void Line(float x0, float y0, float x1, float y1, float thick, Color c)
     {

@@ -644,6 +644,45 @@ See `ARCHITECTURE.md`, save section.
 - **Not verified:** the web build itself. It has not been rebuilt, so the `.jslib` (IndexedDB sync and the page-hide
   hook) has never run in a browser. **Rebuild the web build** to get the fix.
 
+## Level 1 Is Now an Interactive Tutorial ✅
+
+Architecture notes are in `ARCHITECTURE.md` section 13.
+
+- `PhaseXTutorialManager`: an 18-step walkthrough of the whole game loop on `lvl1_cubesat`, from the first steps in
+  the room to the engineering report. Action steps advance by themselves; information steps wait for NEXT.
+- On screen: pulsing highlight frames, bouncing arrows with labels, a waypoint arrow with the distance for targets in
+  the room, and a coach card with the step number, a progress bar, NEXT and SKIP.
+- In the room: a bobbing 3D arrow over the target and a glowing line on the floor with running beads.
+- The part list scrolls by itself to each part the tutorial asks for.
+- [T] skips; [T] on Level 1 (or the TUTORIAL pill) restarts. Finishing or skipping is remembered; RESET PROGRESS
+  restarts it.
+
+### Differences from the request
+- **The tab steps do not auto-advance on ALL.** The workstation opens on the ALL tab, so with that rule the two tab
+  lessons would never be seen. On ALL they wait for the tab click or for NEXT ("STAY ON ALL").
+- **Flight tips do not use [ENTER]**, because in flight that key opens the report. They rotate every 9 seconds or on
+  a click.
+- **Arrows are not drawn with `GUIUtility.RotateAroundPivot`.** It misplaces the pivot on a scaled canvas; the tutorial
+  uses its own canvas-space rotation.
+- **The tutorial does not restart for a player who finished or skipped it** (stored in PlayerPrefs).
+
+### Also fixed
+- The star diamonds in the engineering report and the logo diamond were drawn in the wrong place at any resolution
+  other than 1920x1080 (the same rotation bug). They are now drawn from rows.
+
+### Verified (2026-11-15)
+- Batch compile: zero errors, zero warnings.
+- Windowed editor walkthrough with a temporary harness (deleted), on a scratch save: 37 checks passed, zero errors or
+  exceptions. The tutorial started by itself on step 1, reached each of the 18 steps in order, the floor path and 3D
+  arrow were active for room targets, each of the seven part cards was located (scrolled into view where needed), a
+  crisis appeared during the flight, the report step was reached, NEXT MISSION finished the tutorial, it stayed off
+  on other missions and on returning to Level 1, and restart and skip worked.
+- Screenshots checked: welcome, briefing board (floor path, 3D arrow, waypoint, and the clamped waypoint when looking
+  away), board panel, tab step, rocket card, hologram and lever steps, flight controls tip, Red Alert tip, report.
+- **Not verified:** real key presses ([T], [ENTER]) and real clicks on NEXT / SKIP (the harness called the same
+  methods directly); the drag-to-rotate detection in step 12; the flat (no-station) mode; the web build. The harness
+  installed parts and changed tabs through code, not by clicking cards.
+
 ### Next phases (planned)
 - (On hold) Phase 4: 4-player co-op role ownership and segment sign-off; campaign unlocks; save progress.
 - (On hold) Phase 5: polish, audio, accessibility, standalone builds, demo script.

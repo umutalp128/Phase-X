@@ -179,6 +179,9 @@ namespace PhaseX.UI
                 GUI.color = old;
             }
 
+            // tutorial coach for the 3D station (the workstation draws it itself while it is on screen)
+            if (!PhaseXRuntimeUI.Visible && PhaseXTutorialManager.Instance != null) PhaseXTutorialManager.Instance.DrawOnGUI();
+
             if (_fade > 0.001f)
             {
                 Fill(new Rect(0, 0, W, H), new Color(0, 0, 0, _fade));

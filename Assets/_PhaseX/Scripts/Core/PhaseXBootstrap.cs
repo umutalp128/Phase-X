@@ -46,6 +46,11 @@ public static class PhaseXBootstrap
             Root.AddComponent<PhaseX.UI.PauseMenuController>().Init(modes);
         }
 
+        // Level 1 tutorial coach (works with or without the 3D station)
+        Root.AddComponent<PhaseXTutorialManager>().Init(calc, PhaseX.Player.GameViewModeManager.Instance,
+            PhaseX.Station.MissionControlStation.Instance != null && StationMode ? PhaseX.Station.MissionControlStation.Instance : null,
+            StationMode ? PhaseX.Player.PhaseXPlayerController.Instance : null);
+
         // Save file: written when the application quits, loaded now so the game resumes where the player left it.
         PhaseXSaveSystem.RegisterQuitHook();
         PhaseXSaveSystem.LoadAndRestore();

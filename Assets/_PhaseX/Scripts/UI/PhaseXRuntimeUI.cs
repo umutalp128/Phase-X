@@ -148,6 +148,7 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
     {
         if (ModalOpen || Screen.width <= 0 || Screen.height <= 0) return false;
         var v = new Vector2(screen.x * W / Screen.width, (Screen.height - screen.y) * H / Screen.height);
+        if (PhaseXTutorialManager.OverCoachCard(v)) return false;     // clicking the tutorial card must not spin the 3D view
         return SimActive ? SimViewportRect.Contains(v) : ViewportRect.Contains(v);
     }
 
@@ -338,6 +339,9 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
         }
 
         DrawFloatingTooltip();
+
+        // the tutorial coach draws last, over everything the workstation shows
+        if (PhaseXTutorialManager.Instance != null) PhaseXTutorialManager.Instance.DrawOnGUI();
     }
 
     /// <summary>Draw a modal panel: window background plus a clipped group, content coordinates relative to the panel.</summary>
@@ -358,12 +362,9 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
         GUI.Box(HeaderRect, GUIContent.none, _ink);
         Fill(new Rect(0, HeaderRect.yMax - 2, W, 2), Cyan);
 
-        // logo diamond
-        var m = GUI.matrix;
-        GUIUtility.RotateAroundPivot(45f, new Vector2(38, 32));
-        Fill(new Rect(24, 18, 28, 28), Red);
-        Fill(new Rect(30, 24, 16, 16), Ink);
-        GUI.matrix = m;
+        // logo diamond (drawn from rows: GUIUtility.RotateAroundPivot misplaces its pivot on a scaled canvas)
+        Diamond(38, 32, 20, Red);
+        Diamond(38, 32, 11, Ink);
 
         GUI.Label(new Rect(66, 4, 220, 40), "PHASE X", _title);
         GUI.Label(new Rect(68, 38, 520, 22), "// NASA MISSION CONTROL WORKSTATION", _subtitle);
@@ -1017,13 +1018,7 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
 
         // stars (rotated squares; no glyphs needed)
         for (int i = 0; i < 3; i++)
-        {
-            var m = GUI.matrix;
-            var c = new Vector2(w - 170 + i * 50, 72);
-            GUIUtility.RotateAroundPivot(45f, c);
-            Fill(new Rect(c.x - 15, c.y - 15, 30, 30), i < stars ? new Color(1f, 0.8f, 0.25f) : new Color(0.18f, 0.22f, 0.3f));
-            GUI.matrix = m;
-        }
+            Diamond(w - 170 + i * 50, 72, 21, i < stars ? new Color(1f, 0.8f, 0.25f) : new Color(0.18f, 0.22f, 0.3f));
 
         // resource summary table
         float y = 138;

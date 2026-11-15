@@ -617,3 +617,55 @@ Wall decoration is at most 0.1 m deep, and the bays behind the CAD desk and the 
 
 New material names: `Mat_Wall`, `Mat_WallDark`, `Mat_Ceiling`, `Mat_Trim`, `Mat_FxCore`, `Mat_FxFlame`,
 `Mat_FxOuter`, `Mat_FxPuff`.
+
+
+## 13. Level 1 tutorial — `PhaseXTutorialManager`
+
+`UI/PhaseXTutorialManager.cs` (global namespace, created in `PhaseXBootstrap.Boot()`) turns the first mission
+(`lvl1_cubesat`) into a guided walkthrough of the whole game loop.
+
+**When it runs:** Level 1 is loaded and `TutorialSkipped` is false. **[T]** (or the SKIP button) turns it off; on
+Level 1 **[T]** (or the small TUTORIAL pill) starts it again. Finishing or skipping is stored in PlayerPrefs
+(`PhaseX_TutorialDone`), so a returning player is not walked through it again. Pause menu ▸ RESET PROGRESS restarts it.
+It hides on every other mission.
+
+**How a frame works:** `Update()` calls `Evaluate()`, which first catches up with where the player is (already at the
+desk, already in flight), then runs `RunStep()` for the current `TutorialStep` until one is still waiting. A step only
+fills in data: a title and body, a list of `Pointer`s (target rectangle, arrow direction, label, highlight), an optional
+world target, and where the coach card goes. `DrawOnGUI()` draws that data.
+
+| Steps | Where | Advance |
+|---|---|---|
+| 1 Welcome | room | walk 1.6 m, or NEXT |
+| 2 Briefing board, 3 Data pod, 4 Go to the CAD terminal | room | board read and closed; pod read or NEXT; seated and briefing window closed |
+| 5 Header and CML strip | workstation | NEXT |
+| 6 LAUNCH tab, 7 rocket + orbit, 8 SPACE tab, 9 bus + power + propulsion, 10 payload, 11 radio | workstation | the tab is opened (or NEXT while on ALL); each part installed |
+| 12 3D viewport, 13 Telemetry and validation | workstation | drag or zoom, or NEXT; NEXT |
+| 14 Step away, 15 Hologram X-ray, 16 Launch lever | workstation, room | back in the room; hologram inspected; launch started |
+| 17 Flight controls (three tips, plus a Red Alert tip) | flight | the report opens after the flight is finished |
+| 18 Engineering report | report window | report closed or NEXT MISSION |
+
+Details worth knowing:
+
+- **Parts are taught by id, tabs by role.** `PartsStep` takes the next missing part, and points at its tab if another tab
+  is open, otherwise at its card. So the tutorial follows whatever `Role` the JSON gives a part.
+- **Out-of-order play is handled.** A workstation step while the player walks around points back to the monitor; a room
+  step while seated points at STEP AWAY; a launch step with a broken design points at the validation box.
+- **NEXT on [ENTER]** is only read where no other screen uses the key (the room, and the design screen with no window
+  open). In flight [ENTER] opens the report, so the flight tips rotate by themselves or by clicking NEXT TIP.
+- **Arrows are drawn with a canvas-space rotation** (`Rotated`): `GUI.matrix = canvas * T(pivot) * R * T(-pivot)`.
+  `GUIUtility.RotateAroundPivot` rotates in screen pixels and puts the pivot in the wrong place at any resolution other
+  than 1920x1080. The same bug had misplaced the report's star diamonds and the logo; both are now drawn from rows.
+- **On the GUI canvas y grows downwards**, so arrow directions use the local `DirDown` / `DirUp`, not `Vector2.down`.
+
+Hooks the tutorial reads (`UI/PhaseXRuntimeUI.Tutorial.cs`): `Visible`, `BriefingOpen`, `ReportOpen`, `FlightScreen`,
+`CrisisOpen`, `CurrentTab`, `SegmentTabRect(role)`, `ScrollToAndGetCardRect(partId)` (glides the part list until the
+card is in view and returns its rectangle), and one `...Area` rectangle per panel, button and window. The station HUD
+rectangles (checklist, rank card, panel button) are constants in the tutorial that mirror `StationHUD`.
+
+Drawing: `PhaseXRuntimeUI.OnGUI` calls `DrawOnGUI()` last while the workstation is visible; otherwise `StationHUD.OnGUI`
+does, just before its fade. `PhaseXTutorialManager.OverCoachCard()` keeps the 3D viewport from reacting to clicks on
+the card.
+
+3D guides (room only, children of the manager, layer 2 so they never block the interaction ray): a spinning, bobbing
+arrow over the target, a flat line on the floor from the player to the target, and beads running along it.

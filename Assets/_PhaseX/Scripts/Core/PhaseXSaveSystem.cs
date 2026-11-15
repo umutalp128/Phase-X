@@ -389,6 +389,8 @@ public static class PhaseXSaveSystem
                 player.Teleport(station.spawnPoint.position, station.spawnPoint.eulerAngles.y);
         }
         if (station != null && station.console != null) station.console.ResetPad();
+        // a full reset is a fresh start: the Level 1 tutorial runs again
+        if (PhaseXTutorialManager.Instance != null) PhaseXTutorialManager.Instance.RestartTutorial();
         Debug.Log("[PhaseX] All progress reset. Save file deleted.");
     }
 }
