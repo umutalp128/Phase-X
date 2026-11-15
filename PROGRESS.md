@@ -571,6 +571,14 @@ Architecture notes are in `ARCHITECTURE.md` section 11.
 - **Not verified:** a standalone or web build with the models; OnGUI screens; play with real input; the launch
   cinematic with the new pad rocket; frame rate (the scene now has about 250k triangles when everything is shown).
 
+## Web build fix: CapsuleCollider stripped (2026-11-15)
+
+- Web build logged "Can't add component because class 'CapsuleCollider' doesn't exist". `CreatePrimitive` adds a
+  CapsuleCollider to every cylinder, and "Strip Engine Code" removed the class because nothing referenced it.
+- Added `Scripts/Core/PhaseXBuildPreserve.cs` and `Assets/_PhaseX/link.xml`, which keep the collider classes
+  (and the other engine components the game creates from code) in player builds.
+- Verified: compiles with zero errors and warnings. **Not verified:** a new web build.
+
 ### Next phases (planned)
 - (On hold) Phase 4: 4-player co-op role ownership and segment sign-off; campaign unlocks; save progress.
 - (On hold) Phase 5: polish, audio, accessibility, standalone builds, demo script.
