@@ -50,7 +50,7 @@ function createUnityInstance(canvas, config, onProgress = () => { }) {
       preserveDrawingBuffer: false,
       powerPreference: 2,
     },
-    wasmFileSize: 50972452,
+    wasmFileSize: 51039888,
     streamingAssetsUrl: "StreamingAssets",
     downloadProgress: {},
     onProgress,
