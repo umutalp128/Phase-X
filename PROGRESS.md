@@ -622,6 +622,28 @@ Architecture notes are in `ARCHITECTURE.md` section 11.
 - Verified in a batch play-test: all 10 titles measured on the board, the five long ones are exactly 4.10 m wide and
   the rest keep their full size; screenshot of mission 2 checked. Zero errors or warnings.
 
+## Fix: Web Build Did Not Save Position or Mouse Sensitivity ✅
+
+**Cause (two parts):**
+1. The game only saved on `Application.quitting`, after a flight, or from the pause menu. A browser tab never raises
+   `Application.quitting`, so closing the tab saved nothing. The next start then loaded the old file, whose mouse
+   sensitivity overwrote the newer PlayerPrefs value.
+2. In a browser `persistentDataPath` is an in-memory file system. Nothing copied it to IndexedDB, so even a file
+   that was written could be gone after a reload.
+
+**Fix:** an auto-save (`PhaseXAutoSave`: every 4 s when something changed, and on focus loss / page hide), and
+`Assets/Plugins/WebGL/PhaseXWebSave.jslib`, which flushes the file system to IndexedDB after every save.
+See `ARCHITECTURE.md`, save section.
+
+### Verified (2026-11-15)
+- Zero compiler errors or warnings.
+- Batch play-test in the editor (temporary harness, deleted; scratch save file), 9 checks passed: nothing is written
+  while nothing changes; moving the player and changing the sensitivity is saved within one interval without any
+  explicit save or quit; standing still does not rewrite the file; a change made while paused is saved; the
+  page-hide entry point saves at once.
+- **Not verified:** the web build itself. It has not been rebuilt, so the `.jslib` (IndexedDB sync and the page-hide
+  hook) has never run in a browser. **Rebuild the web build** to get the fix.
+
 ### Next phases (planned)
 - (On hold) Phase 4: 4-player co-op role ownership and segment sign-off; campaign unlocks; save progress.
 - (On hold) Phase 5: polish, audio, accessibility, standalone builds, demo script.

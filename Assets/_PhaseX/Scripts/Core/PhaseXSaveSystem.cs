@@ -104,12 +104,79 @@ public static class PhaseXSaveSystem
     }
 
     static bool _quitHooked;
+    static string _lastSavedSignature;
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+    [System.Runtime.InteropServices.DllImport("__Internal")] static extern void PhaseXSyncFiles();
+    [System.Runtime.InteropServices.DllImport("__Internal")] static extern void PhaseXRegisterPageHide(string objectName, string methodName);
+#endif
+
+    /// <summary>
+    /// Web build: copy the in-memory file system to IndexedDB. Without this a file written to persistentDataPath
+    /// is gone when the tab closes. Does nothing on other platforms.
+    /// </summary>
+    static void FlushToBrowserStorage()
+    {
+#if UNITY_WEBGL && !UNITY_EDITOR
+        try { PhaseXSyncFiles(); } catch (Exception e) { Debug.LogWarning(Tag + "Browser storage sync failed: " + e.Message); }
+#endif
+    }
+
+    /// <summary>
+    /// Start the auto-save: every few seconds if something worth saving changed, and whenever the window loses focus
+    /// or the page is hidden. A browser tab never raises Application.quitting, so the quit hook alone saves nothing there.
+    /// </summary>
+    public static void StartAutoSave(GameObject host)
+    {
+        if (host == null || host.GetComponent<PhaseXAutoSave>() != null) return;
+        host.AddComponent<PhaseXAutoSave>();
+        _lastSavedSignature = StateSignature();      // what was just loaded counts as saved
+#if UNITY_WEBGL && !UNITY_EDITOR
+        try { PhaseXRegisterPageHide(host.name, nameof(PhaseXAutoSave.OnWebPageHide)); } catch (Exception e) { Debug.LogWarning(Tag + "Page-hide hook failed: " + e.Message); }
+#endif
+    }
+
+    /// <summary>Save only if the state differs from the last save. Returns true when a save was written.</summary>
+    public static bool SaveIfChanged()
+    {
+        var mgr = GameViewModeManager.Instance;
+        // not during the launch and flight: the pose is meaningless there, and the flight saves when it ends
+        if (mgr != null && mgr.IsLaunchModeLocked) return false;
+        string sig = StateSignature();
+        if (sig == null || sig == _lastSavedSignature) return false;
+        return Save();
+    }
+
+    /// <summary>A compact fingerprint of everything the save file holds that changes during play.</summary>
+    static string StateSignature()
+    {
+        var calc = MissionCalculator.Instance;
+        if (calc == null || calc.CurrentScenario == null) return null;
+        var sb = new StringBuilder(160);
+        sb.Append(calc.CurrentScenario.Id).Append((int)calc.Phase).Append(calc.RoleFilter.HasValue ? (int)calc.RoleFilter.Value : -1);
+        foreach (var p in calc.SelectedParts) sb.Append(p.Id);
+        sb.Append(StationProgress.Xp).Append(StationProgress.MissionsFlown).Append(StationProgress.Badges.Count);
+        sb.Append(StationProgress.BoardChecked).Append(StationProgress.HologramInspected).Append(StationProgress.Launched);
+        sb.Append(Mathf.RoundToInt(PauseMenuController.MouseSensitivity * 10f)).Append(Mathf.RoundToInt(StationAudio.Volume * 100f));
+        var player = PhaseXPlayerController.Instance;
+        if (player != null)
+        {
+            // 10 cm and 5 degree steps: standing still or glancing around does not rewrite the file
+            Vector3 pos = player.transform.position;
+            sb.Append(Mathf.RoundToInt(pos.x * 10f)).Append(Mathf.RoundToInt(pos.y * 10f)).Append(Mathf.RoundToInt(pos.z * 10f));
+            sb.Append(Mathf.RoundToInt(player.Yaw / 5f)).Append(Mathf.RoundToInt(player.Pitch / 5f)).Append(player.ThirdPerson);
+        }
+        var mgr = GameViewModeManager.Instance;
+        sb.Append(mgr != null && mgr.Mode == GameViewMode.MonitorTerminalGUI);
+        return sb.ToString();
+    }
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     static void ResetStatics()
     {
         Application.quitting -= OnAppQuitting;
         _quitHooked = false;
+        _lastSavedSignature = null;
         LastSaveTimestamp = null;
         LastError = null;
     }
@@ -181,7 +248,9 @@ public static class PhaseXSaveSystem
             if (File.Exists(path)) File.Delete(path);
             File.Move(tmp, path);
             PlayerPrefs.Save();
+            FlushToBrowserStorage();
             LastSaveTimestamp = DateTime.Now;
+            _lastSavedSignature = StateSignature();
             return true;
         }
         catch (Exception e)
@@ -293,6 +362,7 @@ public static class PhaseXSaveSystem
         {
             if (File.Exists(SaveFilePath)) File.Delete(SaveFilePath);
             if (File.Exists(SaveFilePath + ".tmp")) File.Delete(SaveFilePath + ".tmp");
+            FlushToBrowserStorage();      // the deletion has to reach the browser's storage too
         }
         catch (Exception e)
         {
@@ -320,5 +390,40 @@ public static class PhaseXSaveSystem
         }
         if (station != null && station.console != null) station.console.ResetPad();
         Debug.Log("[PhaseX] All progress reset. Save file deleted.");
+    }
+}
+
+/// <summary>
+/// Drives the auto-save (see <see cref="PhaseXSaveSystem.StartAutoSave"/>). Runs on unscaled time, so it also works
+/// while the pause menu holds Time.timeScale at 0, which is exactly when the settings sliders are moved.
+/// </summary>
+public class PhaseXAutoSave : MonoBehaviour
+{
+    /// <summary>Seconds between checks. A check writes the file only when the state changed.</summary>
+    public const float Interval = 4f;
+
+    float _next;
+
+    void Update()
+    {
+        if (Time.unscaledTime < _next) return;
+        _next = Time.unscaledTime + Interval;
+        PhaseXSaveSystem.SaveIfChanged();
+    }
+
+    void OnApplicationFocus(bool focused)
+    {
+        if (!focused) PhaseXSaveSystem.SaveIfChanged();
+    }
+
+    void OnApplicationPause(bool paused)
+    {
+        if (paused) PhaseXSaveSystem.SaveIfChanged();
+    }
+
+    /// <summary>Called from the page (PhaseXWebSave.jslib) when the tab is hidden, closed or navigated away from.</summary>
+    public void OnWebPageHide()
+    {
+        PhaseXSaveSystem.SaveIfChanged();
     }
 }

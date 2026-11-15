@@ -49,6 +49,8 @@ public static class PhaseXBootstrap
         // Save file: written when the application quits, loaded now so the game resumes where the player left it.
         PhaseXSaveSystem.RegisterQuitHook();
         PhaseXSaveSystem.LoadAndRestore();
+        // A browser tab never "quits", so the quit hook alone would lose the player position and settings on the web.
+        PhaseXSaveSystem.StartAutoSave(Root);
 
         Debug.Log("[PHASE X] Mission Control workstation online - scenario: " + calc.CurrentScenario.Title);
     }

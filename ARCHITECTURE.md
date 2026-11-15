@@ -188,6 +188,8 @@ The whole game state is one readable JSON file: `Application.persistentDataPath/
 |---|---|
 | Game start | `PhaseXBootstrap.Boot()` calls `LoadAndRestore()`. No file: fresh start on mission 1 |
 | Application quits (also stopping Play mode) | `Application.quitting` → `Save()` |
+| Every 4 s, if anything changed | `PhaseXAutoSave` → `SaveIfChanged()` (unscaled time, so also while paused; not during a launch or flight) |
+| Window loses focus, app pauses, browser page is hidden or closed | `PhaseXAutoSave` → `SaveIfChanged()` |
 | A flight ends | `GameViewModeManager.ReturnFromFlight()` → `Save()` |
 | Pause menu ▸ SAVE GAME | `Save()` |
 | Pause menu ▸ QUIT GAME | `Save()`, then quit |
@@ -197,6 +199,15 @@ Details worth knowing:
 - **The file is the source of truth.** On load, `StationProgress.RestoreFromSave()` overwrites the PlayerPrefs copy of XP,
   badges and records to match it.
 - **Writes are atomic:** the JSON goes to `phasex_save.json.tmp` first and is then swapped in.
+- **Web builds need two extra things**, both in place:
+  - A browser tab never raises `Application.quitting`, so the auto-save above is what actually saves there.
+    `SaveIfChanged()` compares a fingerprint of the state (position in 10 cm steps, view in 5° steps, settings, design,
+    progress) with the last save, so standing still writes nothing.
+  - `persistentDataPath` is an in-memory file system in the browser. `Assets/Plugins/WebGL/PhaseXWebSave.jslib` copies
+    it to IndexedDB (`FS.syncfs`) after every save and delete, and asks the game to save on `pagehide`,
+    `beforeunload` and `visibilitychange`.
+- **Settings load from the file.** `LoadAndRestore()` applies the file's mouse sensitivity and volume over PlayerPrefs,
+  so a stale file means stale settings: one more reason the file has to be saved promptly.
 - **A flight in progress is not saved.** Loading always resumes in the station with the design as it was. A save made at
   the CAD monitor resumes at the monitor.
 - **Bad files never block start-up.** An unreadable file is ignored (and left on disk until the next save); a save that
