@@ -20,10 +20,10 @@ namespace PhaseX.Station
 
         [Header("Launch pad (outside the window)")]
         public Transform rocket;
-        public GameObject boosters;
         public Transform flame;
         public Light flameLight;
-        public float rocketHeight = 30f;
+        /// <summary>Height of a Falcon 9-class rocket on the pad, in metres (other vehicles scale from it).</summary>
+        public float rocketHeight = 28f;
 
         const float Accel = 7f;
 
@@ -32,8 +32,8 @@ namespace PhaseX.Station
         Vector3 _padPos;
         float _leverAngle, _leverTarget, _liftT = -1f, _jiggleUntil;
         ParticleSystem _smoke;
-        GameObject _atlasSrbs, _vulcanSrbs, _pegasusWing, _saturnLivery;
-        string _liveryId;
+        GameObject _padModel;
+        string _padModelId;
 
         public Vector3 RocketTop => rocket != null ? rocket.position + Vector3.up * rocketHeight * rocket.localScale.y : transform.position;
         public float RocketAltitude => _liftT < 0f ? 0f : 0.5f * Accel * _liftT * _liftT;
@@ -48,97 +48,24 @@ namespace PhaseX.Station
             if (flame != null) flame.gameObject.SetActive(false);
             if (flameLight != null) flameLight.enabled = false;
             BuildSmoke();
-            BuildStrapOns();
         }
 
         void OnDestroy() => StationKit.Kill(_lightMat);
 
         /// <summary>
-        /// Solid strap-on boosters for the pad rocket: two slender SRBs for Atlas V, four GEM 63XL for Vulcan Centaur.
-        /// (The saved "Boosters" object is Falcon Heavy's pair of full-size liquid side cores.) Built at Play time,
-        /// so a station saved in a scene gets them without re-running the editor menu.
+        /// Stand the chosen launch vehicle's own model (Resources/Models/Rockets) on the pad. The model is swapped
+        /// only when the selection changes; a launcher without a model borrows the Falcon 9.
         /// </summary>
-        void BuildStrapOns()
+        void ShowPadRocket(string lvId)
         {
-            if (rocket == null) return;
-            var white = PhaseXMaterials.Lit(new Color(0.92f, 0.93f, 0.95f), 0.6f, 0.2f);
-            var dark = PhaseXMaterials.Lit(new Color(0.08f, 0.08f, 0.1f), 0.5f, 0.5f);
-            const float coreRadius = 1.6f;
-            GameObject Make(string name, int count, float width, float height, float noseTilt)
-            {
-                var root = StationKit.Node(name, rocket, Vector3.zero);
-                for (int k = 0; k < count; k++)
-                {
-                    float a = (count == 2 ? k * 180f : k * 90f + 45f) * Mathf.Deg2Rad;
-                    var dir = new Vector3(Mathf.Cos(a), 0, Mathf.Sin(a));
-                    Vector3 p = dir * (coreRadius + width * 0.5f + 0.05f);
-                    StationKit.Prim(PrimitiveType.Cylinder, root, "SRB", p + Vector3.up * height * 0.5f, new Vector3(width, height * 0.5f, width), white);
-                    var nose = StationKit.Prim(PrimitiveType.Sphere, root, "SRBNose", p + Vector3.up * height, new Vector3(width, width * 2.4f, width), white);
-                    nose.localRotation = Quaternion.AngleAxis(noseTilt, Vector3.Cross(Vector3.up, -dir));   // nosecone leans in to the core
-                    StationKit.Prim(PrimitiveType.Cylinder, root, "SRBNozzle", p + Vector3.down * 0.3f, new Vector3(width * 0.75f, 0.4f, width * 0.75f), dark);
-                }
-                root.gameObject.SetActive(false);
-                return root.gameObject;
-            }
-            _atlasSrbs = Make("StrapOns_lv_atlas_v", 2, 0.95f, 9.5f, 10f);
-            _vulcanSrbs = Make("StrapOns_lv_vulcan_centaur", 4, 1.3f, 11f, 14f);
-
-            // Pegasus XL's delta wing: a flat square turned 45 degrees, so two corners stick out as swept wings
-            var wing = StationKit.Node("Wing_lv_pegasus_xl", rocket, Vector3.zero);
-            StationKit.Box(wing, "DeltaWing", new Vector3(0, 10f, 0), new Vector3(7.5f, 7.5f, 0.22f), white, false, new Vector3(0, 0, 45f));
-            wing.gameObject.SetActive(false);
-            _pegasusWing = wing.gameObject;
-
-            // Saturn V: black roll-pattern bands around the stages and the launch escape tower above the nose
-            var sat = StationKit.Node("Livery_lv_saturn_v", rocket, Vector3.zero);
-            foreach (float y in new[] { 1.2f, 7.5f, 15f, 21.5f })
-                StationKit.Prim(PrimitiveType.Cylinder, sat, "RollBand", new Vector3(0, y, 0), new Vector3(3.26f, 0.7f, 3.26f), dark);
-            StationKit.Prim(PrimitiveType.Cylinder, sat, "EscapeTower", new Vector3(0, 32.5f, 0), new Vector3(0.35f, 2.6f, 0.35f), white);
-            StationKit.Prim(PrimitiveType.Cylinder, sat, "EscapeMotor", new Vector3(0, 31f, 0), new Vector3(0.8f, 0.8f, 0.8f), dark);
-            sat.gameObject.SetActive(false);
-            _saturnLivery = sat.gameObject;
-        }
-
-        /// <summary>
-        /// Paint the pad rocket like the chosen launcher, matching the hologram miniatures and the flight-sim rocket:
-        /// carbon-black Electron, carbon and grey Firefly Alpha, bronze Atlas V core, silver Vulcan Centaur upper stage,
-        /// white for the rest. Parts are found by name, so a station saved in a scene works unchanged.
-        /// </summary>
-        void ApplyLivery(string lvId)
-        {
-            if (rocket == null || lvId == _liveryId) return;
-            _liveryId = lvId;
-            var white = PhaseXMaterials.Lit(new Color(0.92f, 0.93f, 0.95f), 0.6f, 0.2f);
-            var silver = PhaseXMaterials.Lit(new Color(0.78f, 0.8f, 0.84f), 0.75f, 0.7f);
-            var dark = PhaseXMaterials.Lit(new Color(0.08f, 0.08f, 0.1f), 0.5f, 0.5f);
-            var carbon = PhaseXMaterials.Lit(new Color(0.07f, 0.07f, 0.08f), 0.55f, 0.3f);
-            var grey = PhaseXMaterials.Lit(new Color(0.22f, 0.23f, 0.26f), 0.5f, 0.3f);
-            var bronze = PhaseXMaterials.Lit(new Color(0.72f, 0.45f, 0.2f), 0.7f, 0.85f);
-
-            Material first = white, upper = white, fairing = white, band = dark;
-            switch (lvId)
-            {
-                case "lv_small": first = upper = fairing = carbon; band = grey; break;
-                case "lv_firefly_alpha": first = carbon; upper = fairing = grey; break;
-                case "lv_atlas_v": first = bronze; break;
-                case "lv_vulcan_centaur": upper = silver; break;
-            }
-            Paint("Stage1", first); Paint("Stage2", upper); Paint("Fairing", fairing); Paint("Nose", fairing); Paint("Interstage", band);
-            // the red stripe is Falcon-style decoration: hide it on the others
-            var stripe = rocket.Find("Stripe");
-            if (stripe != null) stripe.gameObject.SetActive(lvId == "lv_medium" || lvId == "lv_heavy");
-        }
-
-        void Paint(string child, Material mat)
-        {
-            var t = rocket.Find(child);
-            var r = t != null ? t.GetComponent<Renderer>() : null;
-            if (r != null) r.sharedMaterial = mat;
-        }
-
-        static void Show(GameObject go, bool on)
-        {
-            if (go != null && go.activeSelf != on) go.SetActive(on);
+            if (rocket == null || lvId == _padModelId) return;
+            _padModelId = lvId;
+            if (_padModel != null) Destroy(_padModel);
+            string path = "Rockets/" + lvId;
+            if (!PhaseXModelLibrary.Has(path)) path = "Rockets/lv_medium";
+            _padModel = PhaseXModelLibrary.InstantiateModel(path, rocket, Vector3.zero, Quaternion.identity,
+                Vector3.one * (rocketHeight / PhaseXModelLibrary.RocketModelHeight));
+            _padModel.name = "PadRocket_" + lvId;
         }
 
         void BuildSmoke()
@@ -262,12 +189,7 @@ namespace PhaseX.Station
                 if (lv != null)
                 {
                     rocket.localScale = Vector3.one * PadScale(lv.Id);
-                    Show(boosters, lv.Id == "lv_heavy");                // full-size liquid side cores
-                    Show(_atlasSrbs, lv.Id == "lv_atlas_v");            // two slender solids
-                    Show(_vulcanSrbs, lv.Id == "lv_vulcan_centaur");    // four GEM 63XL solids
-                    Show(_pegasusWing, lv.Id == "lv_pegasus_xl");
-                    Show(_saturnLivery, lv.Id == "lv_saturn_v");
-                    ApplyLivery(lv.Id);
+                    ShowPadRocket(lv.Id);
                 }
             }
         }
@@ -292,23 +214,11 @@ namespace PhaseX.Station
         public void BuildVisuals()
         {
             var t = transform;
-            var metal = PhaseXMaterials.Lit(new Color(0.16f, 0.18f, 0.22f), 0.55f, 0.6f);
-            var dark = PhaseXMaterials.Lit(new Color(0.05f, 0.055f, 0.07f), 0.6f, 0.4f);
-
-            StationKit.Box(t, "Body", new Vector3(0, 0.45f, 0), new Vector3(3.2f, 0.9f, 0.9f), metal, true);
-            StationKit.Box(t, "Deck", new Vector3(0, 0.98f, -0.08f), new Vector3(3.2f, 0.06f, 1.05f), dark, false, new Vector3(-14f, 0, 0));
-            for (int i = 0; i < 5; i++)
-                StationKit.Box(t, "Key", new Vector3(-1.2f + i * 0.28f, 1.03f, -0.2f), new Vector3(0.2f, 0.03f, 0.2f),
-                    PhaseXMaterials.Lit(new Color(0.05f, 0.1f, 0.14f), 0.7f, 0f, new Color(0.1f, 0.5f, 0.8f)), false, new Vector3(-14f, 0, 0));
-
-            // launch lever on the right of the deck
-            StationKit.Box(t, "LeverHousing", new Vector3(1.05f, 1.02f, 0), new Vector3(0.34f, 0.12f, 0.5f), dark);
-            leverPivot = StationKit.Node("LeverPivot", t, new Vector3(1.05f, 1.06f, 0));
-            StationKit.Prim(PrimitiveType.Cylinder, leverPivot, "LeverArm", new Vector3(0, 0.28f, 0), new Vector3(0.05f, 0.28f, 0.05f), PhaseXMaterials.Lit(new Color(0.75f, 0.78f, 0.82f), 0.7f, 0.9f));
-            StationKit.Prim(PrimitiveType.Sphere, leverPivot, "LeverKnob", new Vector3(0, 0.6f, 0), Vector3.one * 0.16f, PhaseXMaterials.Lit(new Color(0.85f, 0.1f, 0.08f), 0.7f, 0.1f, new Color(0.6f, 0.05f, 0.03f)));
-
-            statusLight = StationKit.Prim(PrimitiveType.Sphere, t, "StatusLight", new Vector3(0.45f, 1.14f, 0.1f), Vector3.one * 0.2f, StationKit.Glow(StationKit.Red)).GetComponent<Renderer>();
-            StationKit.Prim(PrimitiveType.Cylinder, t, "StatusLightBase", new Vector3(0.45f, 1.04f, 0.1f), new Vector3(0.24f, 0.03f, 0.24f), dark);
+            // desk, slanted deck with its button banks, guard rail, lever housing, T-handle lever and status light: one Blender model
+            var model = PhaseXModelLibrary.InstantiateModel("Station/station_launch_console", t).transform;
+            leverPivot = PhaseXModelLibrary.Find(model, "LeverPivot");
+            statusLight = PhaseXModelLibrary.FindRenderer(model, "StatusLight");
+            StationKit.Blocker(t, "Solid", new Vector3(0, 0.45f, 0), new Vector3(3.2f, 0.9f, 0.9f));
             statusText = StationKit.Text(t, "StatusText", "NO-GO", new Vector3(-0.5f, 1.32f, 0.3f), Vector3.back, 0.12f, StationKit.TextC);
             StationKit.Text(t, "Label", "LAUNCH CONTROL", new Vector3(0, 0.55f, -0.46f), Vector3.back, 0.14f, StationKit.Amber);
             StationKit.Blocker(t, "InteractVolume", new Vector3(0, 1.1f, -0.1f), new Vector3(3.2f, 1.3f, 1.1f), true);

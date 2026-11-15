@@ -5,7 +5,8 @@ namespace PhaseX.Station
 {
     /// <summary>
     /// Builds the whole 3D NASA Mission Control room, the launch pad outside its panoramic window and the playable
-    /// character, entirely from primitives and runtime materials (no models, prefabs or textures on disk).
+    /// character. Room shell and pad ground are primitives; the consoles, kiosks, service tower and astronaut are
+    /// Blender models loaded through PhaseXModelLibrary. All materials are created at runtime.
     /// Used two ways: PhaseXBootstrap calls it at Play time when the scene has no station (zero-click boot), and the
     /// editor menu "PhaseX/Build 3D Mission Control Station &amp; Player" calls it to build the same hierarchy into the scene.
     /// </summary>
@@ -41,7 +42,7 @@ namespace PhaseX.Station
             var t = root.transform;
 
             BuildShell(t, station);
-            BuildExterior(t, station, out Transform rocket, out GameObject boosters, out Transform flame, out Light flameLight);
+            BuildExterior(t, station, out Transform rocket, out Transform flame, out Light flameLight);
             EnsureExteriorDetail(t);
 
             // ---- Desk 1: main CAD monitor desk, against the west wall, facing into the room
@@ -64,7 +65,6 @@ namespace PhaseX.Station
             station.console = console.gameObject.AddComponent<LaunchControlConsole>();
             station.console.BuildVisuals();
             station.console.rocket = rocket;
-            station.console.boosters = boosters;
             station.console.flame = flame;
             station.console.flameLight = flameLight;
 
@@ -205,13 +205,11 @@ namespace PhaseX.Station
 
         // ================================================================== launch pad outside the window
 
-        static void BuildExterior(Transform t, MissionControlStation station, out Transform rocket, out GameObject boosters, out Transform flame, out Light flameLight)
+        static void BuildExterior(Transform t, MissionControlStation station, out Transform rocket, out Transform flame, out Light flameLight)
         {
             var ext = StationKit.Node("Exterior", t, Vector3.zero);
             var ground = PhaseXMaterials.Lit(new Color(0.045f, 0.05f, 0.055f), 0.15f, 0f);
             var concrete = PhaseXMaterials.Lit(new Color(0.3f, 0.3f, 0.31f), 0.2f, 0f);
-            var steel = PhaseXMaterials.Lit(new Color(0.35f, 0.12f, 0.08f), 0.4f, 0.5f);
-            var white = PhaseXMaterials.Lit(new Color(0.92f, 0.93f, 0.95f), 0.6f, 0.2f);
             var dark = PhaseXMaterials.Lit(new Color(0.08f, 0.08f, 0.1f), 0.5f, 0.5f);
             var lamp = PhaseXMaterials.Lit(new Color(0.6f, 0.6f, 0.55f), 0.5f, 0f, new Color(3f, 2.8f, 2.2f));
 
@@ -221,16 +219,8 @@ namespace PhaseX.Station
             StationKit.Box(ext, "PadApron", new Vector3(0, 0.1f, padZ), new Vector3(30f, 0.4f, 30f), concrete);
             StationKit.Box(ext, "PadMount", new Vector3(0, 0.9f, padZ), new Vector3(8f, 1.4f, 8f), dark);
 
-            // service tower with a lightning mast and floodlights
-            var tower = StationKit.Node("ServiceTower", ext, new Vector3(-7.5f, 0, padZ + 1f));
-            for (int i = 0; i < 4; i++)
-                StationKit.Box(tower, "Leg", new Vector3(i % 2 == 0 ? -1.3f : 1.3f, 16f, i < 2 ? -1.3f : 1.3f), new Vector3(0.35f, 32f, 0.35f), steel);
-            for (int k = 0; k < 8; k++)
-            {
-                StationKit.Box(tower, "Deck", new Vector3(0, 2f + k * 4f, 0), new Vector3(3f, 0.2f, 3f), steel);
-                if (k % 2 == 1) StationKit.Box(tower, "Arm", new Vector3(3.4f, 2f + k * 4f, 0), new Vector3(4.2f, 0.3f, 0.6f), steel);
-            }
-            StationKit.Box(tower, "Mast", new Vector3(0, 36f, 0), new Vector3(0.15f, 8f, 0.15f), dark);
+            // Pad 39A-style service tower: lattice columns, access decks, swing arms with hoses, lightning mast
+            PhaseXModelLibrary.InstantiateModel("Station/station_service_tower", ext, new Vector3(-7.5f, 0, padZ + 1f)).name = "ServiceTower";
             foreach (var p in new[] { new Vector3(-13f, 0, padZ - 12f), new Vector3(13f, 0, padZ - 12f) })
             {
                 StationKit.Box(ext, "FloodPole", p + Vector3.up * 6f, new Vector3(0.3f, 12f, 0.3f), dark);
@@ -240,27 +230,8 @@ namespace PhaseX.Station
                 fl.transform.rotation = Quaternion.LookRotation((new Vector3(0, 14f, padZ) + StationOrigin - fl.transform.position).normalized);
             }
 
-            // multi-stage rocket standing on the pad (origin at its base)
+            // The rocket on the pad (origin at its base). LaunchControlConsole puts the chosen launch vehicle's model here.
             rocket = StationKit.Node("Rocket", ext, new Vector3(0, 1.6f, padZ));
-            StationKit.Prim(PrimitiveType.Cylinder, rocket, "Stage1", new Vector3(0, 9f, 0), new Vector3(3.2f, 9f, 3.2f), white);
-            StationKit.Prim(PrimitiveType.Cylinder, rocket, "Interstage", new Vector3(0, 18.4f, 0), new Vector3(3.25f, 0.5f, 3.25f), dark);
-            StationKit.Prim(PrimitiveType.Cylinder, rocket, "Stage2", new Vector3(0, 22f, 0), new Vector3(3.2f, 3.2f, 3.2f), white);
-            StationKit.Prim(PrimitiveType.Cylinder, rocket, "Fairing", new Vector3(0, 26.4f, 0), new Vector3(3.7f, 1.3f, 3.7f), white);
-            StationKit.Prim(PrimitiveType.Sphere, rocket, "Nose", new Vector3(0, 27.7f, 0), new Vector3(3.7f, 5f, 3.7f), white);
-            StationKit.Box(rocket, "Stripe", new Vector3(0, 12f, -1.58f), new Vector3(0.9f, 4.5f, 0.06f), PhaseXMaterials.Lit(new Color(0.75f, 0.1f, 0.08f), 0.5f, 0f));
-            for (int i = 0; i < 4; i++)
-                StationKit.Box(rocket, "Fin", Quaternion.Euler(0, i * 90f + 45f, 0) * new Vector3(1.9f, 1.4f, 0), new Vector3(1.4f, 2.8f, 0.12f), dark, false, new Vector3(0, i * 90f + 45f, 0));
-            StationKit.Prim(PrimitiveType.Cylinder, rocket, "Engine", new Vector3(0, -0.3f, 0), new Vector3(2.2f, 0.4f, 2.2f), dark);
-            var b = StationKit.Node("Boosters", rocket, Vector3.zero);
-            for (int s = -1; s <= 1; s += 2)
-            {
-                StationKit.Prim(PrimitiveType.Cylinder, b, "Booster", new Vector3(s * 3.25f, 8f, 0), new Vector3(3.1f, 8f, 3.1f), white);
-                StationKit.Prim(PrimitiveType.Sphere, b, "BoosterNose", new Vector3(s * 3.25f, 16f, 0), new Vector3(3.1f, 4.6f, 3.1f), white);
-                StationKit.Prim(PrimitiveType.Cylinder, b, "BoosterEngine", new Vector3(s * 3.25f, -0.3f, 0), new Vector3(2.1f, 0.4f, 2.1f), dark);
-            }
-            b.gameObject.SetActive(false);
-            boosters = b.gameObject;
-
             flame = StationKit.Prim(PrimitiveType.Sphere, rocket, "Flame", new Vector3(0, -4.5f, 0), new Vector3(2.6f, 9f, 2.6f),
                 PhaseXMaterials.Lit(new Color(1f, 0.6f, 0.2f), 0.5f, 0f, new Color(6f, 2.6f, 0.6f)));
             flameLight = StationKit.PointLight(rocket, "FlameLight", new Vector3(0, -3f, 0), new Color(1f, 0.6f, 0.25f), 80f, 120f);
@@ -268,8 +239,8 @@ namespace PhaseX.Station
             flameLight.enabled = false;
 
             // the Moon in the night sky (its texture is generated at Play time)
-            station.moonRenderer = StationKit.Prim(PrimitiveType.Sphere, ext, "Moon", new Vector3(-70f, 62f, 240f), Vector3.one * 34f,
-                PhaseXMaterials.Lit(new Color(0.78f, 0.78f, 0.8f), 0.05f, 0f, new Color(0.25f, 0.25f, 0.27f))).GetComponent<Renderer>();
+            station.moonRenderer = PhaseXModelLibrary.Sphere(ext, "Moon", new Vector3(-70f, 62f, 240f), Vector3.one * 34f, Vector3.zero,
+                PhaseXMaterials.Lit(new Color(0.78f, 0.78f, 0.8f), 0.05f, 0f, new Color(0.25f, 0.25f, 0.27f))).GetComponentInChildren<Renderer>();
         }
 
         // ================================================================== Phase 5 polish (idempotent)
@@ -279,7 +250,7 @@ namespace PhaseX.Station
 
         /// <summary>
         /// Launch-pad dressing outside the window: visible floodlight beams on the rocket, a rim-light tower behind the
-        /// pad, umbilical arms, hoses and cross-bracing on the service tower, pad edge lights and a layered horizon glow.
+        /// pad, pad edge lights and a layered horizon glow. (The service tower's own detail is part of its model.)
         /// Safe to call any number of times: <see cref="Build"/> calls it, and <see cref="MissionControlStation"/> calls
         /// it again at Play time so a station saved in a scene before Phase 5 looks the same as a freshly built one.
         /// </summary>
@@ -292,12 +263,9 @@ namespace PhaseX.Station
 
             const float padZ = 55f;
             var dark = PhaseXMaterials.Lit(new Color(0.08f, 0.08f, 0.1f), 0.5f, 0.5f);
-            var steel = PhaseXMaterials.Lit(new Color(0.35f, 0.12f, 0.08f), 0.4f, 0.5f);
-            var hose = PhaseXMaterials.Lit(new Color(0.05f, 0.05f, 0.06f), 0.35f, 0.1f);
             var hazard = PhaseXMaterials.Lit(new Color(0.95f, 0.75f, 0.1f), 0.45f, 0.1f);
             var lamp = PhaseXMaterials.Lit(new Color(0.6f, 0.6f, 0.55f), 0.5f, 0f, new Color(3f, 2.8f, 2.2f));
             var amberLamp = PhaseXMaterials.Lit(new Color(0.5f, 0.3f, 0.05f), 0.5f, 0f, new Color(2.6f, 1.5f, 0.3f));
-            var redLamp = PhaseXMaterials.Lit(new Color(0.5f, 0.05f, 0.04f), 0.5f, 0f, new Color(3f, 0.25f, 0.2f));
             var beam = StationKit.Ghost(new Color(1f, 0.95f, 0.82f, 0.016f));
             var beamCore = StationKit.Ghost(new Color(1f, 0.97f, 0.88f, 0.028f));
             var coolBeam = StationKit.Ghost(new Color(0.7f, 0.85f, 1f, 0.014f));
@@ -326,29 +294,6 @@ namespace PhaseX.Station
                     l.transform.rotation = Quaternion.LookRotation((d.TransformPoint(aim + Vector3.up * 4f) - l.transform.position).normalized);
                 }
             }
-
-            // ---- service tower: cross-bracing on all four faces, umbilical arms with hoses, aviation beacon
-            var tower = StationKit.Node("ServiceTowerDetail", d, new Vector3(-7.5f, 0f, padZ + 1f));
-            for (int k = 0; k < 7; k++)
-            {
-                float y0 = 2f + k * 4f, y1 = y0 + 4f;
-                float a = k % 2 == 0 ? -1.3f : 1.3f, b = -a;
-                StationKit.Rod(tower, "Brace", new Vector3(a, y0, -1.3f), new Vector3(b, y1, -1.3f), 0.11f, steel);
-                StationKit.Rod(tower, "Brace", new Vector3(a, y0, 1.3f), new Vector3(b, y1, 1.3f), 0.11f, steel);
-                StationKit.Rod(tower, "Brace", new Vector3(-1.3f, y0, a), new Vector3(-1.3f, y1, b), 0.11f, steel);
-                StationKit.Rod(tower, "Brace", new Vector3(1.3f, y0, a), new Vector3(1.3f, y1, b), 0.11f, steel);
-            }
-            foreach (float y in new[] { 6f, 14f, 22f })
-            {
-                // the existing arm ends at tower-local x = 5.5; the rocket hull is about 0.75 m further
-                StationKit.Box(tower, "UmbilicalPlate", new Vector3(5.55f, y, 0f), new Vector3(0.25f, 0.9f, 0.9f), hazard);
-                StationKit.Rod(tower, "UmbilicalHose", new Vector3(5.5f, y - 0.25f, -0.1f), new Vector3(6.05f, y - 0.95f, -0.3f), 0.16f, hose);
-                StationKit.Rod(tower, "UmbilicalHose", new Vector3(5.5f, y + 0.1f, 0.2f), new Vector3(6.2f, y - 0.2f, 0.05f), 0.1f, hose);
-                StationKit.Rod(tower, "ArmStrut", new Vector3(1.3f, y + 2.4f, 0f), new Vector3(5.2f, y + 0.15f, 0f), 0.09f, steel);
-                StationKit.Prim(PrimitiveType.Sphere, tower, "ArmWarningLight", new Vector3(5.5f, y + 0.55f, 0f), Vector3.one * 0.28f, amberLamp);
-            }
-            StationKit.Prim(PrimitiveType.Sphere, tower, "AviationBeacon", new Vector3(0f, 40.2f, 0f), Vector3.one * 0.6f, redLamp);
-            StationKit.Prim(PrimitiveType.Sphere, tower, "AviationBeacon", new Vector3(1.3f, 32.3f, 1.3f), Vector3.one * 0.35f, redLamp);
 
             // ---- pad: amber edge lights round the apron and a hazard stripe at the pad mount
             for (int i = 0; i < 12; i++)
@@ -432,60 +377,6 @@ namespace PhaseX.Station
             ps.Play();
         }
 
-        /// <summary>
-        /// Astronaut suit detail: reflective gold visor in a dark frame, neck ring, helmet lamps, a chest telemetry
-        /// patch with status LEDs, backpack hoses, antenna and a status light (coloured by the mission state at
-        /// Play time, see PhaseXPlayerController). Safe to call any number of times.
-        /// </summary>
-        public static void EnsureAstronautDetail(GameObject bodyGo)
-        {
-            if (bodyGo == null) return;
-            var body = bodyGo.transform;
-            if (body.Find("SuitDetail") != null) return;
-            var d = StationKit.Node("SuitDetail", body, Vector3.zero);
-
-            var gold = PhaseXMaterials.Lit(new Color(0.92f, 0.67f, 0.2f), 0.97f, 1f, new Color(0.17f, 0.1f, 0.015f));
-            var dark = PhaseXMaterials.Lit(new Color(0.05f, 0.055f, 0.07f), 0.6f, 0.5f);
-            var metal = PhaseXMaterials.Lit(new Color(0.7f, 0.72f, 0.76f), 0.8f, 0.9f);
-            var grey = PhaseXMaterials.Lit(new Color(0.35f, 0.37f, 0.4f), 0.5f, 0.3f);
-            var screen = PhaseXMaterials.Lit(new Color(0.02f, 0.08f, 0.12f), 0.85f, 0f, new Color(0.1f, 0.75f, 1.2f));
-            var ledGreen = PhaseXMaterials.Lit(new Color(0.05f, 0.3f, 0.1f), 0.5f, 0f, new Color(0.3f, 2.4f, 0.8f));
-            var ledAmber = PhaseXMaterials.Lit(new Color(0.3f, 0.2f, 0.03f), 0.5f, 0f, new Color(2.4f, 1.5f, 0.3f));
-            var lampGlow = PhaseXMaterials.Lit(new Color(0.6f, 0.6f, 0.55f), 0.5f, 0f, new Color(2.2f, 2.1f, 1.8f));
-            var flag = PhaseXMaterials.Lit(new Color(0.1f, 0.2f, 0.6f), 0.4f, 0f);
-
-            // helmet: gold visor, dark frame just behind it, neck ring, two lamps
-            var visor = body.Find("Visor");
-            var visorRenderer = visor != null ? visor.GetComponent<Renderer>() : null;
-            if (visorRenderer != null) visorRenderer.sharedMaterial = gold;
-            StationKit.Prim(PrimitiveType.Sphere, d, "VisorFrame", new Vector3(0f, 1.63f, 0.07f), new Vector3(0.335f, 0.275f, 0.235f), dark);
-            StationKit.Prim(PrimitiveType.Cylinder, d, "NeckRing", new Vector3(0f, 1.45f, 0f), new Vector3(0.34f, 0.025f, 0.34f), metal);
-            for (int s = -1; s <= 1; s += 2)
-            {
-                StationKit.Box(d, "HelmetLamp", new Vector3(s * 0.19f, 1.7f, 0.05f), new Vector3(0.04f, 0.05f, 0.08f), grey);
-                StationKit.Box(d, "HelmetLampLens", new Vector3(s * 0.19f, 1.7f, 0.093f), new Vector3(0.03f, 0.035f, 0.01f), lampGlow);
-                // life-support hoses from the backpack to the helmet
-                StationKit.Rod(d, "Hose", new Vector3(s * 0.16f, 1.34f, -0.2f), new Vector3(s * 0.13f, 1.5f, -0.1f), 0.03f, grey);
-            }
-
-            // chest telemetry patch: a lit readout with three bars and a column of status LEDs
-            StationKit.Box(d, "ChestTelemetry", new Vector3(-0.035f, 1.2f, 0.243f), new Vector3(0.14f, 0.09f, 0.012f), screen);
-            for (int i = 0; i < 3; i++)
-                StationKit.Box(d, "TelemetryBar", new Vector3(-0.08f + i * 0.045f, 1.185f + i * 0.008f, 0.251f), new Vector3(0.028f, 0.03f + i * 0.016f, 0.006f), i == 2 ? ledAmber : ledGreen);
-            StationKit.Prim(PrimitiveType.Sphere, d, "ChestLed", new Vector3(0.085f, 1.235f, 0.243f), Vector3.one * 0.024f, ledGreen);
-            StationKit.Prim(PrimitiveType.Sphere, d, "ChestLed", new Vector3(0.085f, 1.2f, 0.243f), Vector3.one * 0.024f, ledGreen);
-            StationKit.Prim(PrimitiveType.Sphere, d, "ChestLed", new Vector3(0.085f, 1.165f, 0.243f), Vector3.one * 0.024f, ledAmber);
-            StationKit.Box(d, "FlagPatch", new Vector3(-0.408f, 1.22f, 0f), new Vector3(0.012f, 0.07f, 0.1f), flag);
-
-            // backpack: status light in a housing, and a whip antenna
-            StationKit.Prim(PrimitiveType.Cylinder, d, "StatusLightHousing", new Vector3(0.12f, 1.33f, -0.332f), new Vector3(0.09f, 0.008f, 0.09f), dark, false, new Vector3(90f, 0f, 0f));
-            StationKit.Prim(PrimitiveType.Sphere, d, "BackpackStatusLight", new Vector3(0.12f, 1.33f, -0.34f), Vector3.one * 0.06f, ledGreen);
-            StationKit.Rod(d, "Antenna", new Vector3(-0.15f, 1.38f, -0.29f), new Vector3(-0.15f, 1.74f, -0.31f), 0.012f, metal);
-            StationKit.Prim(PrimitiveType.Sphere, d, "AntennaTip", new Vector3(-0.15f, 1.75f, -0.31f), Vector3.one * 0.03f, ledAmber);
-
-            foreach (var tr in d.GetComponentsInChildren<Transform>(true)) tr.gameObject.layer = 2;
-        }
-
         // ================================================================== player
 
         public static PhaseXPlayerController BuildPlayer(MissionControlStation station)
@@ -502,25 +393,11 @@ namespace PhaseX.Station
 
             // visible astronaut/engineer body (shown in third person)
             var body = StationKit.Node("AstronautBody", go.transform, Vector3.zero);
-            var suit = PhaseXMaterials.Lit(new Color(0.9f, 0.9f, 0.92f), 0.45f, 0.05f);
-            var grey = PhaseXMaterials.Lit(new Color(0.35f, 0.37f, 0.4f), 0.5f, 0.3f);
-            var visor = PhaseXMaterials.Lit(new Color(0.05f, 0.08f, 0.14f), 0.95f, 0.6f, new Color(0.05f, 0.2f, 0.35f));
-            var orange = PhaseXMaterials.Lit(new Color(0.95f, 0.45f, 0.1f), 0.5f, 0f);
-            StationKit.Prim(PrimitiveType.Capsule, body, "Torso", new Vector3(0, 1.08f, 0), new Vector3(0.52f, 0.36f, 0.4f), suit);
-            StationKit.Prim(PrimitiveType.Sphere, body, "Helmet", new Vector3(0, 1.62f, 0), Vector3.one * 0.38f, suit);
-            StationKit.Prim(PrimitiveType.Sphere, body, "Visor", new Vector3(0, 1.63f, 0.09f), new Vector3(0.3f, 0.24f, 0.26f), visor);
-            StationKit.Box(body, "LifeSupport", new Vector3(0, 1.15f, -0.24f), new Vector3(0.4f, 0.5f, 0.18f), grey);
-            StationKit.Box(body, "ChestPack", new Vector3(0, 1.2f, 0.2f), new Vector3(0.24f, 0.16f, 0.08f), grey);
-            StationKit.Box(body, "MissionPatch", new Vector3(0.19f, 1.3f, 0.19f), new Vector3(0.08f, 0.08f, 0.02f), orange);
-            for (int s = -1; s <= 1; s += 2)
-            {
-                StationKit.Prim(PrimitiveType.Capsule, body, "Arm", new Vector3(s * 0.33f, 1.08f, 0), new Vector3(0.15f, 0.3f, 0.15f), suit, false, new Vector3(0, 0, s * 8f));
-                StationKit.Prim(PrimitiveType.Sphere, body, "Glove", new Vector3(s * 0.37f, 0.76f, 0), Vector3.one * 0.13f, grey);
-                StationKit.Prim(PrimitiveType.Capsule, body, "Leg", new Vector3(s * 0.13f, 0.42f, 0), new Vector3(0.19f, 0.42f, 0.19f), suit);
-                StationKit.Box(body, "Boot", new Vector3(s * 0.13f, 0.05f, 0.04f), new Vector3(0.18f, 0.1f, 0.3f), grey);
-            }
-            EnsureAstronautDetail(body.gameObject);
-            foreach (var tr in body.GetComponentsInChildren<Transform>(true)) tr.gameObject.layer = 2;
+            var model = PhaseXModelLibrary.InstantiateModel("Station/astronaut_engineer", body);
+            // reflective gold visor; the backpack status light is coloured by the mission state (PhaseXPlayerController)
+            var visor = PhaseXModelLibrary.FindRenderer(model.transform, "Visor");
+            if (visor != null) visor.sharedMaterial = PhaseXMaterials.Lit(new Color(0.92f, 0.67f, 0.2f), 0.97f, 1f, new Color(0.17f, 0.1f, 0.015f));
+            PhaseXModelLibrary.SetLayer(body.gameObject, 2);
             body.gameObject.SetActive(false);
             player.body = body.gameObject;
             return player;

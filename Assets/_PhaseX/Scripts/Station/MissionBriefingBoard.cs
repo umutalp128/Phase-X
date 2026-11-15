@@ -124,11 +124,9 @@ namespace PhaseX.Station
         public void BuildVisuals()
         {
             var t = transform;
-            var dark = PhaseXMaterials.Lit(new Color(0.04f, 0.045f, 0.055f), 0.6f, 0.4f);
-            StationKit.Box(t, "Frame", new Vector3(0, 0, -0.04f), new Vector3(4.6f, 2.7f, 0.1f), dark, true);
-            StationKit.Box(t, "Screen", new Vector3(0, 0, 0.02f), new Vector3(4.4f, 2.5f, 0.02f),
-                PhaseXMaterials.Lit(new Color(0.015f, 0.035f, 0.07f), 0.25f, 0f, new Color(0.02f, 0.09f, 0.18f)));
-            StationKit.Box(t, "Bar", new Vector3(0, 1.02f, 0.035f), new Vector3(4.4f, 0.04f, 0.01f), StationKit.Glow(StationKit.Amber, 1.6f));
+            // bevelled frame, recessed glowing "Screen" and the amber accent "Bar": one Blender model
+            PhaseXModelLibrary.InstantiateModel("Station/station_briefing_board", t);
+            StationKit.Blocker(t, "Solid", new Vector3(0, 0, -0.04f), new Vector3(4.6f, 2.7f, 0.1f));
             StationKit.Text(t, "Header", "NASA MISSION BRIEFING", new Vector3(2.05f, 1.14f, 0.05f), Vector3.forward, 0.13f, StationKit.Amber, TextAnchor.MiddleLeft, TextAlignment.Left);
             titleText = StationKit.Text(t, "Title", "MISSION", new Vector3(2.05f, 0.76f, 0.05f), Vector3.forward, 0.26f, StationKit.Cyan, TextAnchor.MiddleLeft, TextAlignment.Left);
             bodyText = StationKit.Text(t, "Body", "", new Vector3(2.05f, 0.48f, 0.05f), Vector3.forward, 0.15f, StationKit.TextC, TextAnchor.UpperLeft, TextAlignment.Left);

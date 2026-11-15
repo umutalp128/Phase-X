@@ -55,10 +55,7 @@ namespace PhaseX.Player
         {
             if (body != null)
             {
-                // Phase 5 suit detail: the builder adds it, and a player saved in a scene earlier gets it here.
-                StationBuilder.EnsureAstronautDetail(body);
-                var light = body.transform.Find("SuitDetail/BackpackStatusLight");
-                var r = light != null ? light.GetComponent<Renderer>() : null;
+                var r = PhaseXModelLibrary.FindRenderer(body.transform, "BackpackStatusLight");
                 if (r != null)
                 {
                     _statusLightMat = StationKit.Glow(StationKit.Cyan, 2.5f);

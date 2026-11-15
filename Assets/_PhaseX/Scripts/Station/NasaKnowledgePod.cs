@@ -53,19 +53,12 @@ namespace PhaseX.Station
         public void BuildVisuals(Vector3 labelFacing)
         {
             var t = transform;
-            var metal = PhaseXMaterials.Lit(new Color(0.16f, 0.18f, 0.22f), 0.6f, 0.7f);
-            StationKit.Prim(PrimitiveType.Cylinder, t, "Base", new Vector3(0, 0.06f, 0), new Vector3(0.9f, 0.06f, 0.9f), metal);
-            StationKit.Prim(PrimitiveType.Cylinder, t, "Column", new Vector3(0, 0.6f, 0), new Vector3(0.34f, 0.55f, 0.34f), metal, true);
-            StationKit.Prim(PrimitiveType.Cylinder, t, "Cap", new Vector3(0, 1.17f, 0), new Vector3(0.6f, 0.03f, 0.6f), metal);
-            glow = StationKit.Prim(PrimitiveType.Sphere, t, "Core", new Vector3(0, 1.48f, 0), Vector3.one * 0.3f, StationKit.Glow(StationKit.Amber)).GetComponent<Renderer>();
-            ring = StationKit.Node("Ring", t, new Vector3(0, 1.48f, 0), new Vector3(20f, 0, 0));
-            var ringMat = PhaseXMaterials.Lit(new Color(0.75f, 0.78f, 0.82f), 0.7f, 0.9f);
-            for (int i = 0; i < 12; i++)
-            {
-                float a = i / 12f * Mathf.PI * 2f;
-                StationKit.Box(ring, "Seg", new Vector3(Mathf.Cos(a), 0, Mathf.Sin(a)) * 0.32f, new Vector3(0.17f, 0.025f, 0.03f), ringMat, false,
-                    new Vector3(0, -a * Mathf.Rad2Deg + 90f, 0));
-            }
+            // base, fluted column, cradle, glowing "Core" and the "Ring" that Update spins: one Blender model
+            var model = PhaseXModelLibrary.InstantiateModel("Station/station_knowledge_pod", t).transform;
+            glow = PhaseXModelLibrary.FindRenderer(model, "Core");
+            ring = PhaseXModelLibrary.Find(model, "Ring");
+            if (ring != null) ring.localRotation = Quaternion.Euler(20f, 0, 0);     // tilted, then spun round its own axis
+            StationKit.Blocker(t, "Solid", new Vector3(0, 0.6f, 0), new Vector3(0.36f, 1.2f, 0.36f));
             StationKit.PointLight(t, "PodLight", new Vector3(0, 1.6f, 0), StationKit.Amber, 1.2f, 3.5f);
             // labels live on a holder that undoes the pod's own rotation, so they always face into the room
             var labels = StationKit.Node("Labels", t, Vector3.zero);

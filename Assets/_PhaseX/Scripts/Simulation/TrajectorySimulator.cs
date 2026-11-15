@@ -196,14 +196,12 @@ public class TrajectorySimulator : MonoBehaviour
         var moonMat = PhaseXMaterials.Textured(PhaseXMaterials.MoonTexture(), 0.06f, PhaseXMaterials.MoonNormalMap(), 1.35f);
         _owned.Add(earthMat); _owned.Add(moonMat);
 
-        _earth = Prim(PrimitiveType.Sphere, _root.transform, Vector3.zero, Vector3.one * LunarFlightPlan.EarthR * 2f, new Vector3(0, 0, 23.4f), earthMat);
-        _earth.name = "SimEarth";
+        _earth = PhaseXModelLibrary.Sphere(_root.transform, "SimEarth", Vector3.zero, Vector3.one * LunarFlightPlan.EarthR * 2f, new Vector3(0, 0, 23.4f), earthMat);
         _clouds = ProceduralSpacecraftView.AddEarthShells(_earth);
 
         _moonAnchor = new GameObject("MoonAnchor").transform;
         _moonAnchor.SetParent(_root.transform, false);
-        _moonMesh = Prim(PrimitiveType.Sphere, _moonAnchor, Vector3.zero, Vector3.one * LunarFlightPlan.MoonR * 2f, Vector3.zero, moonMat);
-        _moonMesh.name = "SimMoon";
+        _moonMesh = PhaseXModelLibrary.Sphere(_moonAnchor, "SimMoon", Vector3.zero, Vector3.one * LunarFlightPlan.MoonR * 2f, Vector3.zero, moonMat);
 
         // trajectory lines
         _moonPath = Line("MoonPath", _root.transform, new Color(0.5f, 0.55f, 0.65f, 0.35f), true, true);
@@ -267,89 +265,30 @@ public class TrajectorySimulator : MonoBehaviour
         {
             _rover = new GameObject(Plan.Crewed ? "LunarModule" : "FarSideRover").transform;
             _rover.SetParent(_root.transform, false);
-            if (Plan.Crewed)
-            {
-                // Miniature Lunar Module: gold octagonal descent stage with an engine bell on four legs, dark ascent
-                // cabin. Scaled down as a whole so it looks right against the Moon (radius 1.7 in sim units).
-                _rover.localScale = Vector3.one * 0.42f;
-                var gold = PhaseXMaterials.Lit(new Color(0.86f, 0.64f, 0.2f), 0.8f, 0.9f);
-                var grey = PhaseXMaterials.Lit(new Color(0.55f, 0.57f, 0.6f), 0.5f, 0.6f);
-                var cabin = PhaseXMaterials.Lit(new Color(0.2f, 0.21f, 0.24f), 0.5f, 0.6f);
-                Prim(PrimitiveType.Cylinder, _rover, new Vector3(0, 0.1f, 0), new Vector3(0.24f, 0.05f, 0.24f), new Vector3(0, 22.5f, 0), gold).name = "DescentStage";
-                Prim(PrimitiveType.Cube, _rover, new Vector3(0, 0.1f, 0), new Vector3(0.2f, 0.09f, 0.2f), new Vector3(0, 45, 0), gold).name = "DescentStageOct";
-                Prim(PrimitiveType.Cylinder, _rover, new Vector3(0, 0.035f, 0), new Vector3(0.09f, 0.025f, 0.09f), Vector3.zero, cabin).name = "DescentBell";
-                Prim(PrimitiveType.Cube, _rover, new Vector3(0, 0.22f, 0), new Vector3(0.16f, 0.14f, 0.16f), new Vector3(0, 45, 0), cabin).name = "AscentStage";
-                for (int i = 0; i < 4; i++)
-                {
-                    Vector3 d = Quaternion.Euler(0, i * 90f + 45f, 0) * Vector3.forward;
-                    Prim(PrimitiveType.Cylinder, _rover, d * 0.15f + new Vector3(0, 0.05f, 0), new Vector3(0.02f, 0.08f, 0.02f), new Vector3(d.z * 35f, 0, -d.x * 35f), grey).name = "Leg_" + i;
-                    Prim(PrimitiveType.Cylinder, _rover, d * 0.2f, new Vector3(0.06f, 0.006f, 0.06f), Vector3.zero, gold).name = "Foot_" + i;
-                }
-                // tracking beacon just above the ascent stage: kept a little larger than true scale so the lander can be found
-                Prim(PrimitiveType.Sphere, _rover, new Vector3(0, 0.34f, 0), Vector3.one * 0.06f, Vector3.zero,
-                    PhaseXMaterials.Lit(new Color(0.3f, 1f, 0.6f), 0.5f, 0f, new Color(0.4f, 1.6f, 0.8f))).name = "RoverDot";
-            }
-            else
-            {
-                Prim(PrimitiveType.Cube, _rover, Vector3.zero, new Vector3(0.22f, 0.08f, 0.26f), Vector3.zero, PhaseXMaterials.Lit(new Color(0.9f, 0.9f, 0.92f), 0.5f, 0.3f));
-                Prim(PrimitiveType.Sphere, _rover, new Vector3(0, 0.08f, 0), Vector3.one * 0.12f, Vector3.zero,
-                    PhaseXMaterials.Lit(new Color(0.3f, 1f, 0.6f), 0.5f, 0f, new Color(0.4f, 1.6f, 0.8f)));
-            }
+            // Apollo: the Lunar Module (about 0.16 units across its footpads, against a Moon of radius 1.7).
+            // Far-side mission: the deployed six-wheeled rover. Both carry a green tracking beacon ("Beacon").
+            PhaseXModelLibrary.InstantiateModel(Plan.Crewed ? "Simulation/sim_lunar_module" : "Simulation/sim_lunar_rover", _rover);
             _rover.gameObject.SetActive(false);
         }
     }
 
-    /// <summary>The ascent / TLI rocket, styled after the chosen launch vehicle (size, core colour, wings, boosters).</summary>
+    /// <summary>
+    /// The ascent / TLI rocket: the chosen launch vehicle's own model, turned so its nose points along +Z (the
+    /// flight direction) and centred on the craft, with an engine exhaust glow at the base.
+    /// </summary>
     Transform BuildRocket(Transform parent, SpacecraftPart lv)
     {
         string id = lv != null ? lv.Id : "lv_small";
+        if (!PhaseXModelLibrary.Has("Rockets/" + id)) id = "lv_medium";     // a launcher added to the JSON without a model
         float s = id == "lv_pegasus_xl" ? 0.62f : id == "lv_small" ? 0.7f : id == "lv_firefly_alpha" ? 0.82f
             : id == "lv_atlas_v" ? 0.97f : id == "lv_vulcan_centaur" ? 1.1f : id == "lv_heavy" || id == "lv_saturn_v" ? 1.15f : 1f;
         var root = new GameObject("Rocket").transform;
         root.SetParent(parent, false);
-        root.localScale = Vector3.one * 0.32f * s;
-        var white = PhaseXMaterials.Lit(new Color(0.92f, 0.93f, 0.95f), 0.6f, 0.2f);
-        var dark = PhaseXMaterials.Lit(new Color(0.12f, 0.12f, 0.14f), 0.5f, 0.5f);
-        var carbon = PhaseXMaterials.Lit(new Color(0.07f, 0.07f, 0.08f), 0.55f, 0.3f);
-        var bronze = PhaseXMaterials.Lit(new Color(0.72f, 0.45f, 0.2f), 0.7f, 0.85f);
-        // core: bronze Common Core Booster for Atlas V, carbon composite for Electron and Firefly Alpha
-        var core = id == "lv_atlas_v" ? bronze : id == "lv_small" || id == "lv_firefly_alpha" ? carbon : white;
-        var upper = id == "lv_small" || id == "lv_firefly_alpha" ? carbon : white;
-        // rocket built along +Z (its flight direction)
-        Prim(PrimitiveType.Cylinder, root, new Vector3(0, 0, -0.28f), new Vector3(0.3f, 0.62f, 0.3f), new Vector3(90, 0, 0), core);
-        Prim(PrimitiveType.Cylinder, root, new Vector3(0, 0, 0.62f), new Vector3(0.3f, 0.28f, 0.3f), new Vector3(90, 0, 0), upper);
-        Prim(PrimitiveType.Sphere, root, new Vector3(0, 0, 0.95f), new Vector3(0.3f, 0.3f, 0.6f), Vector3.zero, upper);
-        Prim(PrimitiveType.Cylinder, root, new Vector3(0, 0, 0.35f), new Vector3(0.31f, 0.03f, 0.31f), new Vector3(90, 0, 0), dark);
-        for (int i = 0; i < 4; i++)
-            Prim(PrimitiveType.Cube, root, Quaternion.Euler(0, 0, i * 90f) * new Vector3(0.2f, 0, -0.75f), new Vector3(0.18f, 0.02f, 0.3f), new Vector3(0, 0, i * 90f), dark);
-        if (id == "lv_saturn_v")
-        {
-            // Saturn V: black roll-pattern bands on the white stages and the launch escape tower on the nose
-            foreach (float z in new[] { -0.82f, -0.3f, 0.12f, 0.56f })
-                Prim(PrimitiveType.Cylinder, root, new Vector3(0, 0, z), new Vector3(0.305f, 0.05f, 0.305f), new Vector3(90, 0, 0), dark);
-            Prim(PrimitiveType.Cylinder, root, new Vector3(0, 0, 1.42f), new Vector3(0.035f, 0.22f, 0.035f), new Vector3(90, 0, 0), white);
-            Prim(PrimitiveType.Cylinder, root, new Vector3(0, 0, 1.3f), new Vector3(0.07f, 0.05f, 0.07f), new Vector3(90, 0, 0), dark);
-        }
-        if (id == "lv_pegasus_xl")
-        {
-            // swept delta wing: a flat square turned 45 degrees, so its corners stick out as two triangles
-            Prim(PrimitiveType.Cube, root, new Vector3(0, -0.12f, -0.1f), new Vector3(0.95f, 0.025f, 0.95f), new Vector3(0, 45, 0), white);
-        }
-        if (id == "lv_heavy" || id == "lv_vulcan_centaur" || id == "lv_atlas_v")
-        {
-            // Falcon Heavy: two full-size liquid side cores. Atlas V / Vulcan: slender solid strap-ons.
-            bool liquid = id == "lv_heavy";
-            float bw = liquid ? 0.28f : id == "lv_vulcan_centaur" ? 0.15f : 0.11f;
-            float bl = liquid ? 0.75f : 0.5f;
-            float off = 0.15f + bw * 0.5f + 0.02f;
-            for (int sgn = -1; sgn <= 1; sgn += 2)
-            {
-                Prim(PrimitiveType.Cylinder, root, new Vector3(sgn * off, 0, -0.9f + bl), new Vector3(bw, bl, bw), new Vector3(90, 0, 0), white);
-                Prim(PrimitiveType.Sphere, root, new Vector3(sgn * off, 0, -0.9f + bl * 2f), new Vector3(bw, bw, bw * 1.6f), Vector3.zero, white);
-            }
-        }
-        Prim(PrimitiveType.Sphere, root, new Vector3(0, 0, -1.05f), new Vector3(0.28f, 0.28f, 0.6f), Vector3.zero,
-            PhaseXMaterials.Lit(new Color(1f, 0.6f, 0.2f), 0.5f, 0f, new Color(3f, 1.4f, 0.3f)));
+        root.localScale = Vector3.one * 0.46f * s;
+        const float h = PhaseXModelLibrary.RocketModelHeight;
+        PhaseXModelLibrary.InstantiateModel("Rockets/" + id, root, new Vector3(0, 0, -h * 0.5f), Quaternion.Euler(90f, 0f, 0f));
+        Prim(PrimitiveType.Sphere, root, new Vector3(0, 0, -h * 0.5f - 0.12f), new Vector3(0.11f, 0.11f, 0.36f), Vector3.zero,
+            PhaseXMaterials.Lit(new Color(1f, 0.6f, 0.2f), 0.5f, 0f, new Color(3f, 1.4f, 0.3f))).name = "ExhaustGlow";
         return root;
     }
 

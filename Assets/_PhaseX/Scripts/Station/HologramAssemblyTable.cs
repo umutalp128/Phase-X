@@ -301,118 +301,32 @@ namespace PhaseX.Station
         }
 
         /// <summary>
-        /// Seven miniatures at one common scale, so size and silhouette are the lesson: slim carbon Electron, winged
-        /// air-launched Pegasus XL, composite Firefly Alpha, Falcon 9, bronze Atlas V with solid strap-ons,
-        /// wide Vulcan Centaur with GEM boosters, and triple-core Falcon Heavy.
+        /// Height of each miniature on the stand, in metres. One common scale, so size and silhouette are the lesson:
+        /// slim Electron and winged Pegasus XL up to the towering Saturn V.
         /// </summary>
+        static readonly float[] LvMiniHeights = { 0.55f, 0.52f, 0.85f, 1.45f, 1.35f, 1.45f, 1.5f, 1.68f };
+
+        /// <summary>One miniature per launch vehicle, each the vehicle's own Blender model (Resources/Models/Rockets).</summary>
         void BuildLvMinis(Transform stand)
         {
-            var white = PhaseXMaterials.Lit(new Color(0.92f, 0.93f, 0.95f), 0.6f, 0.2f);
-            var silver = PhaseXMaterials.Lit(new Color(0.78f, 0.8f, 0.84f), 0.75f, 0.7f);
-            var black = PhaseXMaterials.Lit(new Color(0.05f, 0.055f, 0.07f), 0.6f, 0.5f);
-            var carbon = PhaseXMaterials.Lit(new Color(0.07f, 0.07f, 0.08f), 0.55f, 0.3f);
-            var grey = PhaseXMaterials.Lit(new Color(0.22f, 0.23f, 0.26f), 0.5f, 0.3f);
-            var bronze = PhaseXMaterials.Lit(new Color(0.72f, 0.45f, 0.2f), 0.7f, 0.85f);
-
             lvMinis = new GameObject[LvIds.Length];
             for (int i = 0; i < LvIds.Length; i++)
             {
-                string id = LvIds[i];
-                var m = StationKit.Node("Mini_" + id, stand, new Vector3(0, 0.92f, 0));
-
-                // two-stage stack: first stage (0..split), band, upper stage, fairing + nose
-                void Stack(float h, float w, float split, Material first, Material upper, Material fairing, float fairingW, Material band)
-                {
-                    float h1 = h * split, h2 = h - h1;
-                    StationKit.Prim(PrimitiveType.Cylinder, m, "Stage1", new Vector3(0, h1 * 0.5f, 0), new Vector3(w, h1 * 0.5f, w), first);
-                    StationKit.Prim(PrimitiveType.Cylinder, m, "Stage2", new Vector3(0, h1 + h2 * 0.3f, 0), new Vector3(w, h2 * 0.3f, w), upper);
-                    StationKit.Prim(PrimitiveType.Cylinder, m, "Fairing", new Vector3(0, h1 + h2 * 0.8f, 0), new Vector3(fairingW, h2 * 0.2f, fairingW), fairing);
-                    StationKit.Prim(PrimitiveType.Sphere, m, "Nose", new Vector3(0, h, 0), new Vector3(fairingW, fairingW * 2.2f, fairingW), fairing);
-                    if (band != null) StationKit.Prim(PrimitiveType.Cylinder, m, "Interstage", new Vector3(0, h1, 0), new Vector3(w * 1.04f, 0.014f, w * 1.04f), band);
-                    StationKit.Prim(PrimitiveType.Cylinder, m, "Engine", new Vector3(0, 0.012f, 0), new Vector3(w * 0.8f, 0.012f, w * 0.8f), black);
-                }
-                void Boosters(int count, float h, float w, float coreW, Material mat, float noseTilt)
-                {
-                    for (int k = 0; k < count; k++)
-                    {
-                        float a = (count == 2 ? k * 180f : k * 90f + 45f) * Mathf.Deg2Rad;
-                        var dir = new Vector3(Mathf.Cos(a), 0, Mathf.Sin(a));
-                        Vector3 p = dir * (coreW * 0.5f + w * 0.5f + 0.004f);
-                        StationKit.Prim(PrimitiveType.Cylinder, m, "Booster", p + Vector3.up * h * 0.5f, new Vector3(w, h * 0.5f, w), mat);
-                        // angled nosecone leaning in towards the core
-                        var nose = StationKit.Prim(PrimitiveType.Sphere, m, "BoosterNose", p + Vector3.up * h, new Vector3(w, w * 2f, w), mat);
-                        nose.localRotation = Quaternion.AngleAxis(noseTilt, Vector3.Cross(Vector3.up, -dir));
-                    }
-                }
-
-                switch (id)
-                {
-                    case "lv_small":            // Electron: slim, all carbon black
-                        Stack(0.55f, 0.07f, 0.68f, carbon, carbon, carbon, 0.07f, grey);
-                        break;
-                    case "lv_pegasus_xl":       // Pegasus XL: compact, winged, air-launched
-                        Stack(0.52f, 0.065f, 0.55f, white, white, white, 0.065f, black);
-                        StationKit.Box(m, "DeltaWing", new Vector3(0, 0.2f, 0), new Vector3(0.26f, 0.26f, 0.008f), white, false, new Vector3(0, 0, 45f));
-                        for (int k = 0; k < 3; k++)
-                            StationKit.Box(m, "TailFin", Quaternion.Euler(0, k * 120f + 90f, 0) * new Vector3(0.055f, 0.05f, 0), new Vector3(0.07f, 0.09f, 0.006f), white, false, new Vector3(0, -(k * 120f + 90f), 0));
-                        break;
-                    case "lv_firefly_alpha":    // Firefly Alpha: carbon composite, slightly wider fairing
-                        Stack(0.85f, 0.095f, 0.66f, carbon, grey, grey, 0.108f, black);
-                        break;
-                    case "lv_medium":           // Falcon 9: tall white core, black interstage
-                        Stack(1.45f, 0.14f, 0.68f, white, white, white, 0.165f, black);
-                        break;
-                    case "lv_atlas_v":          // Atlas V: bronze Common Core Booster, white Centaur III, slender SRBs
-                        Stack(1.35f, 0.15f, 0.6f, bronze, white, white, 0.17f, black);
-                        Boosters(2, 0.5f, 0.05f, 0.15f, white, 12f);
-                        break;
-                    case "lv_vulcan_centaur":   // Vulcan Centaur: wide core, Centaur V, four GEM 63XL boosters
-                        Stack(1.45f, 0.18f, 0.6f, white, silver, white, 0.19f, black);
-                        Boosters(4, 0.55f, 0.062f, 0.18f, white, 14f);
-                        break;
-                    case "lv_saturn_v":         // Saturn V: three white stages with black roll bands, five F-1 bells, escape tower
-                    {
-                        const float h = 1.68f, w = 0.2f;
-                        StationKit.Prim(PrimitiveType.Cylinder, m, "Stage1", new Vector3(0, h * 0.2f, 0), new Vector3(w, h * 0.2f, w), white);              // S-IC
-                        StationKit.Prim(PrimitiveType.Cylinder, m, "Stage2", new Vector3(0, h * 0.53f, 0), new Vector3(w, h * 0.13f, w), white);            // S-II
-                        StationKit.Prim(PrimitiveType.Cylinder, m, "Taper", new Vector3(0, h * 0.675f, 0), new Vector3(w * 0.86f, h * 0.015f, w * 0.86f), black);
-                        StationKit.Prim(PrimitiveType.Cylinder, m, "Stage3", new Vector3(0, h * 0.76f, 0), new Vector3(w * 0.72f, h * 0.07f, w * 0.72f), white);   // S-IVB
-                        StationKit.Prim(PrimitiveType.Cylinder, m, "Apollo", new Vector3(0, h * 0.87f, 0), new Vector3(w * 0.55f, h * 0.04f, w * 0.55f), silver);  // spacecraft
-                        StationKit.Prim(PrimitiveType.Sphere, m, "Nose", new Vector3(0, h * 0.91f, 0), new Vector3(w * 0.55f, w * 0.7f, w * 0.55f), white);
-                        StationKit.Prim(PrimitiveType.Cylinder, m, "EscapeTower", new Vector3(0, h * 0.99f, 0), new Vector3(w * 0.1f, h * 0.06f, w * 0.1f), white);
-                        foreach (float y in new[] { 0.035f, 0.2f, 0.4f, 0.46f, 0.66f })                                                                     // black roll-pattern bands
-                            StationKit.Prim(PrimitiveType.Cylinder, m, "Band", new Vector3(0, h * y, 0), new Vector3(w * 1.03f, h * 0.018f, w * 1.03f), black);
-                        for (int k = 0; k < 4; k++)                                                                                                         // fins + outer F-1 engines
-                        {
-                            var d = Quaternion.Euler(0, k * 90f + 45f, 0) * Vector3.forward;
-                            StationKit.Box(m, "Fin", d * (w * 0.56f) + Vector3.up * 0.06f, new Vector3(0.012f, 0.11f, 0.09f), black, false, new Vector3(0, k * 90f + 45f, 0));
-                            StationKit.Prim(PrimitiveType.Cylinder, m, "F1", d * (w * 0.3f) + Vector3.down * 0.012f, new Vector3(w * 0.3f, 0.016f, w * 0.3f), grey);
-                        }
-                        StationKit.Prim(PrimitiveType.Cylinder, m, "F1", Vector3.down * 0.012f, new Vector3(w * 0.3f, 0.016f, w * 0.3f), grey);              // centre F-1
-                        break;
-                    }
-                    default:                    // Falcon Heavy: three full-size liquid cores
-                        Stack(1.5f, 0.16f, 0.68f, white, white, white, 0.18f, black);
-                        Boosters(2, 1.02f, 0.16f, 0.16f, white, 0f);
-                        break;
-                }
-                m.gameObject.SetActive(false);
-                lvMinis[i] = m.gameObject;
+                float scale = LvMiniHeights[i] / PhaseXModelLibrary.RocketModelHeight;
+                var mini = PhaseXModelLibrary.InstantiateModel("Rockets/" + LvIds[i], stand, new Vector3(0, 0.92f, 0), Quaternion.identity, Vector3.one * scale);
+                mini.name = "Mini_" + LvIds[i];
+                mini.SetActive(false);
+                lvMinis[i] = mini;
             }
         }
 
         public void BuildVisuals()
         {
             var t = transform;
-            var metal = PhaseXMaterials.Lit(new Color(0.14f, 0.16f, 0.2f), 0.65f, 0.7f);
-            var dark = PhaseXMaterials.Lit(new Color(0.05f, 0.055f, 0.07f), 0.6f, 0.5f);
-
-            StationKit.Prim(PrimitiveType.Cylinder, t, "Plinth", new Vector3(0, 0.08f, 0), new Vector3(2.6f, 0.08f, 2.6f), dark);
-            StationKit.Prim(PrimitiveType.Cylinder, t, "Pedestal", new Vector3(0, 0.5f, 0), new Vector3(1.9f, 0.4f, 1.9f), metal);
-            StationKit.Prim(PrimitiveType.Cylinder, t, "Top", new Vector3(0, 0.93f, 0), new Vector3(2.2f, 0.03f, 2.2f), dark);
-            emitterRing = StationKit.Prim(PrimitiveType.Cylinder, t, "EmitterRing", new Vector3(0, 0.965f, 0), new Vector3(1.7f, 0.012f, 1.7f), StationKit.Glow(StationKit.Cyan)).GetComponent<Renderer>();
-            StationKit.Prim(PrimitiveType.Cylinder, t, "EmitterCore", new Vector3(0, 0.975f, 0), new Vector3(1.5f, 0.012f, 1.5f), dark);
-            beam = StationKit.Prim(PrimitiveType.Cylinder, t, "Beam", new Vector3(0, 2.0f, 0), new Vector3(1.7f, 1.0f, 1.7f), StationKit.Ghost(new Color(0.3f, 0.8f, 1f, 0.07f))).GetComponent<Renderer>();
+            // plinth, ribbed pedestal, projector emitters, emitter ring, beam and the launch vehicle stand: one Blender model
+            var model = PhaseXModelLibrary.InstantiateModel("Station/station_hologram_table", t).transform;
+            emitterRing = PhaseXModelLibrary.FindRenderer(model, "EmitterRing");
+            beam = PhaseXModelLibrary.FindRenderer(model, "Beam");
             StationKit.Blocker(t, "Solid", new Vector3(0, 0.5f, 0), new Vector3(1.7f, 1f, 1.7f));
             StationKit.Blocker(t, "InteractVolume", new Vector3(0, 1.5f, 0), new Vector3(2.4f, 2.6f, 2.4f), true);
 
@@ -428,10 +342,9 @@ namespace PhaseX.Station
                 callouts[i] = StationKit.Text(calloutRoot, "Callout_" + names[i], names[i], spots[i], Vector3.back, 0.14f, StationKit.TextC);
             xrayTitle = StationKit.Text(calloutRoot, "XRayTitle", "", new Vector3(0, 1.25f, 0), Vector3.back, 0.15f, StationKit.TextC);
 
-            // launch vehicle miniatures on a side stand (same scale, so the size difference is the lesson)
+            // launch vehicle miniatures on the side stand (its pedestal is part of the table model)
             var stand = StationKit.Node("LaunchVehicleStand", t, new Vector3(2.15f, 0, 0.2f));
-            StationKit.Prim(PrimitiveType.Cylinder, stand, "StandBase", new Vector3(0, 0.45f, 0), new Vector3(0.7f, 0.45f, 0.7f), metal, true);
-            StationKit.Prim(PrimitiveType.Cylinder, stand, "StandGlow", new Vector3(0, 0.91f, 0), new Vector3(0.6f, 0.01f, 0.6f), StationKit.Glow(StationKit.Amber, 1.4f));
+            StationKit.Blocker(stand, "StandSolid", new Vector3(0, 0.45f, 0), new Vector3(0.6f, 0.9f, 0.6f));
             BuildLvMinis(stand);
             lvLabel = StationKit.Text(stand, "LvLabel", "LAUNCH VEHICLE", new Vector3(0, 0.55f, -0.37f), Vector3.back, 0.065f, StationKit.TextC);
             StationKit.Text(t, "Label", "SPACECRAFT HOLOGRAM TABLE", new Vector3(0, 0.6f, -0.97f), Vector3.back, 0.09f, StationKit.Cyan);

@@ -543,6 +543,34 @@ Architecture notes are in `ARCHITECTURE.md` section 11.
   which was not changed.
 >>>>>>> Stashed changes
 
+## Blender 3D models replace the primitive geometry (2026-11-15)
+
+- 37 `.fbx` models generated with Blender (scripts in `Tools/BlenderModels`) into `Resources/Models`:
+  19 spacecraft modules, 8 launch vehicles, 3 simulation models, 7 station models. That is the requested set plus
+  two antenna models (`com_sband`, `com_xband`), added so no spacecraft part is left as primitives.
+- New `PhaseXModelLibrary` loads them and binds runtime URP materials by `Mat_*` name; new editor
+  `PhaseXModelImportSettings`.
+- Refactored to load models: `ProceduralSpacecraftView`, `TrajectorySimulator`, `HologramAssemblyTable`,
+  `LaunchControlConsole`, `StationBuilder`, `MonitorTerminalStation`, `MissionBriefingBoard`, `NasaKnowledgePod`,
+  `PhaseXPlayerController`.
+
+### Differences from the request
+- Rocket models are all 1.6 tall; the hologram keeps its size lesson through a per-vehicle height table.
+- The launch lever pivot moved to the centre of the console, as specified; the button banks are part of the model.
+- The knowledge pod ring is flat in the model and tilted 20 degrees in code, so its spin axis stays exact.
+- Extra material names: `Mat_Metal`, `Mat_Grey`, `Mat_Screen`, `Mat_Beam`.
+
+### Verified
+- Batch play-test with a temporary harness (deleted), scratch save file: zero compiler errors or warnings, zero
+  runtime errors or warnings. All 37 models load, every renderer has one material, all imported transforms are
+  identity apart from the named pivots, which sit at the specified positions.
+- Apollo: one Lunar Module before separation, the docked one hidden after, shown again on stepping back.
+  Far-side mission: stowed rover hidden after landing. All 8 launchers appear on the pad, on the stand and in flight.
+- Screenshots checked: three spacecraft designs, hologram and X-ray, pad and stand for all launchers, flight
+  rockets, landed LM and rover, desk, console (lever up and pulled), board, pod, tower, astronaut front and back.
+- **Not verified:** a standalone or web build with the models; OnGUI screens; play with real input; the launch
+  cinematic with the new pad rocket; frame rate (the scene now has about 250k triangles when everything is shown).
+
 ### Next phases (planned)
 - (On hold) Phase 4: 4-player co-op role ownership and segment sign-off; campaign unlocks; save progress.
 - (On hold) Phase 5: polish, audio, accessibility, standalone builds, demo script.

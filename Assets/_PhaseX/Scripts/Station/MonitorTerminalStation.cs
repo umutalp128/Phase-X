@@ -51,38 +51,15 @@ namespace PhaseX.Station
         public void BuildVisuals()
         {
             var t = transform;
-            var metal = PhaseXMaterials.Lit(new Color(0.16f, 0.18f, 0.22f), 0.55f, 0.6f);
-            var top = PhaseXMaterials.Lit(new Color(0.09f, 0.1f, 0.13f), 0.7f, 0.3f);
-            var dark = PhaseXMaterials.Lit(new Color(0.04f, 0.045f, 0.055f), 0.6f, 0.4f);
-
-            StationKit.Box(t, "DeskTop", new Vector3(0, 0.82f, 0), new Vector3(2.6f, 0.08f, 1.1f), top, true);
-            StationKit.Box(t, "DeskLegL", new Vector3(-1.2f, 0.4f, 0), new Vector3(0.1f, 0.8f, 1f), metal);
-            StationKit.Box(t, "DeskLegR", new Vector3(1.2f, 0.4f, 0), new Vector3(0.1f, 0.8f, 1f), metal);
-            StationKit.Box(t, "DeskBack", new Vector3(0, 0.45f, -0.5f), new Vector3(2.4f, 0.7f, 0.06f), metal);
-
-            // monitor: stand + bezel + glowing screen
-            StationKit.Box(t, "Stand", new Vector3(0, 0.98f, -0.25f), new Vector3(0.12f, 0.3f, 0.1f), dark);
-            StationKit.Box(t, "StandBase", new Vector3(0, 0.87f, -0.22f), new Vector3(0.5f, 0.03f, 0.3f), dark);
-            StationKit.Box(t, "Bezel", new Vector3(0, 1.55f, -0.25f), new Vector3(1.7f, 0.98f, 0.07f), dark, true);
-            screen = StationKit.Box(t, "Screen", new Vector3(0, 1.55f, -0.21f), new Vector3(1.6f, 0.88f, 0.02f), StationKit.Glow(StationKit.Cyan, 1.2f)).GetComponent<Renderer>();
+            // desk, curved ultrawide monitor, side telemetry monitors, keyboard, mouse and chair: one Blender model
+            var model = PhaseXModelLibrary.InstantiateModel("Station/station_cad_desk", t).transform;
+            screen = PhaseXModelLibrary.FindRenderer(model, "Screen");
             screenText = StationKit.Text(t, "ScreenText", "SPACECRAFT CAD\nPRESS [E]", new Vector3(0, 1.55f, -0.19f), Vector3.forward, 0.16f, Color.white);
-
-            // side monitors for a control-room feel
-            for (int s = -1; s <= 1; s += 2)
-            {
-                StationKit.Box(t, "SideBezel", new Vector3(s * 1.05f, 1.35f, -0.12f), new Vector3(0.62f, 0.5f, 0.05f), dark, false, new Vector3(0, -s * 28f, 0));
-                StationKit.Box(t, "SideScreen", new Vector3(s * 1.04f, 1.35f, -0.09f), new Vector3(0.56f, 0.44f, 0.02f),
-                    PhaseXMaterials.Lit(new Color(0.02f, 0.05f, 0.09f), 0.8f, 0f, new Color(0.02f, 0.1f, 0.18f)), false, new Vector3(0, -s * 28f, 0));
-            }
-            StationKit.Box(t, "Keyboard", new Vector3(0, 0.875f, 0.2f), new Vector3(0.7f, 0.025f, 0.22f), dark);
-            StationKit.Box(t, "Mouse", new Vector3(0.55f, 0.875f, 0.22f), new Vector3(0.07f, 0.03f, 0.11f), dark);
-
-            // chair pushed to the side so it never blocks the player
-            var chair = StationKit.Node("Chair", t, new Vector3(1.75f, 0, 0.85f), new Vector3(0, -35f, 0));
-            StationKit.Prim(PrimitiveType.Cylinder, chair, "Base", new Vector3(0, 0.05f, 0), new Vector3(0.55f, 0.03f, 0.55f), dark);
-            StationKit.Prim(PrimitiveType.Cylinder, chair, "Post", new Vector3(0, 0.27f, 0), new Vector3(0.07f, 0.22f, 0.07f), metal);
-            StationKit.Box(chair, "Seat", new Vector3(0, 0.52f, 0), new Vector3(0.5f, 0.08f, 0.5f), top, true);
-            StationKit.Box(chair, "Back", new Vector3(0, 0.92f, -0.23f), new Vector3(0.48f, 0.7f, 0.07f), top);
+            StationKit.Blocker(t, "DeskSolid", new Vector3(0, 0.43f, 0), new Vector3(2.6f, 0.86f, 1.1f));
+            StationKit.Blocker(t, "MonitorSolid", new Vector3(0, 1.55f, -0.25f), new Vector3(1.7f, 0.98f, 0.1f));
+            // the chair is pushed to the side so it never blocks the player
+            var chair = StationKit.Node("ChairSolid", t, new Vector3(1.75f, 0.3f, 0.85f), new Vector3(0, -35f, 0));
+            chair.gameObject.AddComponent<BoxCollider>().size = new Vector3(0.5f, 0.6f, 0.5f);
 
             StationKit.Text(t, "Label", "MAIN ENGINEERING  //  CAD TERMINAL", new Vector3(0, 2.28f, -0.25f), Vector3.forward, 0.13f, StationKit.Cyan);
 
