@@ -462,3 +462,66 @@ at build time and destroyed in `OnDestroy()`.
 | Labels never dangle | `MissionControlStation.RefreshLabels()` re-collects the 3D labels at start, every 2 s, and at once when a destroyed one is seen |
 | Paused time is safe | UI animation uses unscaled time; the camera tween adds `deltaTime / duration` only when `deltaTime > 0` |
 | Statics reset | every static, including `CursorLockRequested` and the audio sources, resets in `SubsystemRegistration` |
+
+## 11. Visual-first UI and HD planets
+
+### 11a. Planets — `PhaseXMaterials`
+
+Earth and Moon are generated once per Play session at 1024 × 512 and cached (`_earthTex`, `_earthNormal`,
+`_earthClouds`, `_moonTex`, `_moonNormal`, reset in `ResetStatics`). The design viewport, the flight simulation and
+the station's night sky all use the same textures. **Nobody may destroy them**: `TrajectorySimulator` puts only its
+material instances in `_owned`.
+
+| Call | Result |
+|---|---|
+| `EarthTexture()` / `EarthNormalMap()` | built together from one height field: domain-warped continents, oceans from navy to turquoise shelves, biomes by latitude, moisture and elevation, ice caps |
+| `EarthCloudTexture()` | white with alpha: latitude-stretched cloud bands plus nine spiral cyclones |
+| `MoonTexture()` / `MoonNormalMap()` | maria and highlands, then 204 craters in three tiers (bowl, rim, central peak, rays on seven young ones) stamped into one height field |
+| `Textured(tex, smoothness, normalMap, normalScale)` | lit material; with a normal map it enables `_NORMALMAP` and sets `_BumpMap` / `_BumpScale` |
+| `CloudShell()` | shared lit transparent material for the cloud deck (bright by day, dark by night) |
+| `AtmosphereRim(color)` | shared unlit tint for the atmosphere shell |
+
+Three details matter if this code is touched:
+
+- **Thresholds are quantiles, not constants.** Averaged Perlin noise has a narrow, off-centre range, so the generator
+  first measures it (`Quantiles`, 6000 Fibonacci-sphere samples) and places the coastline at the 66th percentile, the
+  cloud edge at the 55th and the mare edge at the 66th.
+- **`Mathf.SmoothStep(a, b, t)` interpolates; it is not a threshold.** Masks use the local `Step01(edge0, edge1, x)`.
+- **Craters and cyclones are rasterized** only inside their own latitude-longitude box (`ForEachTexelNear`), which keeps
+  the whole build near one second (measured: Earth 0.48 s, clouds 0.31 s, Moon 0.31 s on the development PC).
+
+Two more template materials in `Resources/Materials` keep shader variants in player builds, like the three in
+section 1c: `PhaseX_LitNormalTemplate` (`_NORMALMAP`) and `PhaseX_LitTransparentTemplate` (transparent surface).
+Without them the code falls back to enabling the keyword on the plain template, and to unlit clouds.
+
+`ProceduralSpacecraftView.AddEarthShells(earth)` adds the two children used by both scenes: `EarthClouds` (1.018×)
+and `EarthAtmosphere` (1.045×). They have negative sorting orders so orbit lines and trails always draw over them.
+
+### 11b. Hover-first workstation — `PhaseXRuntimeUI.Visuals.cs`
+
+The workstation shows icons, pills and bars; sentences appear only in the floating tooltip.
+
+- **`Hover(title, body, sub, accent, part)`** is called by whatever the mouse is over. `DrawFloatingTooltip()` runs
+  last in `OnGUI`, latches the content so it can fade out, follows the cursor (offset 22, 18, clamped on screen) and
+  shows a part's stat chips when a part is passed.
+- **Drawing primitives** are rectangle fills only: `RoundFill`, `Frame`, `Disc`, `Line`, `Check`, `Pill`, `MiniBar`,
+  `MiniIcon`. Nothing rotates the GUI matrix, so the drawings are correct at any resolution and inside scroll views.
+- **`DrawPartIcon(tile, part, accent, brightness)`** draws a 52 × 52 vector icon chosen by part id, with a default
+  per category, so a part added to the JSON later still gets an icon.
+- **Emoji are not used.** Unity's built-in font cannot be relied on to draw them, so the rocket, planet, lock,
+  warning, bulb and medal glyphs are drawn; the star uses the checked glyph from `StationProgress`.
+
+| Animation | State | Speed (unscaled time) |
+|---|---|---|
+| Modal pop-in (scale 0.92 → 1, ease-out-back, backdrop fade) | `_modalAnim` | about 0.22 s |
+| Card hover / selected (slide 5 px, accent bar 4 → 8 px) | `_cardHoverAnim[id]` | × 12 |
+| Tooltip fade and glide | `_tooltipAlpha`, `_tipPos` | × 9 in, × 12 out |
+| Gauge fill | `_gaugeShown[]` | × 10 |
+| Orbit-colour legend (flight HUD) | `_legendAnim` | × 8 |
+| Station checklist expand | `StationHUD._checklistExpand` | × 9 |
+
+Layout: side panels are 410 px wide in design (were 470) and 310 px in flight (were 380); the footer is 28 px.
+
+The station checklist is a 360 × 82 pill showing only the next step. It opens to all five steps while a panel is
+open, while the mouse is over it, or while **[TAB]** is held — the cursor is captured while walking, so hovering is
+impossible there.

@@ -121,6 +121,7 @@ public static class PhaseXInput
             case K.Right: return kb.rightArrowKey.isPressed;
             case K.Up: return kb.upArrowKey.isPressed;
             case K.Down: return kb.downArrowKey.isPressed;
+            case K.Tab: return kb.tabKey.isPressed;
         }
         return false;
 #else
@@ -135,6 +136,7 @@ public static class PhaseXInput
             case K.Right: return Input.GetKey(KeyCode.RightArrow);
             case K.Up: return Input.GetKey(KeyCode.UpArrow);
             case K.Down: return Input.GetKey(KeyCode.DownArrow);
+            case K.Tab: return Input.GetKey(KeyCode.Tab);
         }
         return false;
 #endif

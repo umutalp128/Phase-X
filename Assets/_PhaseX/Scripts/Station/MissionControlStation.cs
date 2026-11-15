@@ -66,7 +66,7 @@ namespace PhaseX.Station
             if (statusStrips != null) foreach (var r in statusStrips) if (r != null) r.sharedMaterial = _stripMat;
             _beaconMat = StationKit.Glow(StationKit.Amber, 0.2f);
             if (beaconLens != null) beaconLens.sharedMaterial = _beaconMat;
-            if (moonRenderer != null) moonRenderer.sharedMaterial = PhaseXMaterials.Textured(PhaseXMaterials.MoonTexture(), 0.05f);
+            if (moonRenderer != null) moonRenderer.sharedMaterial = PhaseXMaterials.Textured(PhaseXMaterials.MoonTexture(), 0.06f, PhaseXMaterials.MoonNormalMap(), 1.35f);
 
             _calc = MissionCalculator.Instance;
             if (_calc != null)

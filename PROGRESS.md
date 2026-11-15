@@ -479,6 +479,7 @@ confirmation, and QUIT GAME saves first. Details in `ARCHITECTURE.md` section 1d
 - **Not verified:** the pause menu's new layout and the confirmation dialog on screen (OnGUI is not captured), real
   button clicks and ESC presses (the test called the same methods), the quit-save in a standalone build, and WebGL.
 
+<<<<<<< Updated upstream
 ## Fix: Two Lunar Modules During the Apollo Landing ✅
 
 - **Duplicate lander:** when the Lunar Module undocked to land, the copy docked on the orbiting spacecraft stayed visible.
@@ -492,6 +493,55 @@ confirmation, and QUIT GAME saves first. Details in `ARCHITECTURE.md` section 1d
 Verified (2026-11-15) in batch play mode with zero errors or warnings: one LM before separation, one after, re-docking on
 stepping back, references cleared after the flight, and the rover mission. Screenshots of the docked stack, the CSM alone
 in orbit and the landed LM were checked by eye.
+=======
+## Visual-First UI & HD Planets ✅
+
+Architecture notes are in `ARCHITECTURE.md` section 11.
+
+### Planets
+- Earth and Moon are now cached 1024 × 512 colour maps with matching normal maps (were flat 256 × 128).
+- Earth has a rotating cloud deck with cyclones and an atmosphere shell; the Moon has maria, 204 craters and rays.
+- Used in the design viewport, the flight simulation and the station night sky. The flight no longer owns (or
+  destroys) the shared textures.
+- Two new shader template materials keep the normal-map and transparent variants in player builds.
+
+### Workstation and flight HUD
+- Part cards are a fixed 68 px: procedural icon, name, status badges, one row of stat chips. Descriptions moved to a
+  floating tooltip that fades in next to the cursor.
+- Gauges lost their caption line and gained segments; science and reliability are two mini-meters; warnings are
+  one-line rows whose full root cause is in the tooltip; "ALL SYSTEMS GO" is a banner with check pills and tip pills.
+- The viewport header is four slot pills (rocket, orbit, bus, payloads) and one stars + score badge.
+- Briefing and report windows pop in with a short scale and fade.
+- Flight HUD: phase timeline with dots, the latest four events, readout tiles, mission-health mini-bars, the Flight
+  Director note behind a hover badge, and the colour legend behind an "ORBIT COLORS" pill.
+- Side panels are narrower, so the 3D view is larger in both screens.
+
+### Station HUD
+- The checklist is a small pill with only the next step; it opens on [TAB], on hover, or while a panel is open.
+- The rank card is 300 × 86 with three icon counters (stars, badges, flights).
+- Removed the "Press [ESC]..." line that sat over the workstation viewport; the STEP AWAY button already says it.
+
+### Differences from the request
+- Icons are drawn, not emoji: the built-in font cannot be trusted to render them.
+- Clouds use a lit transparent material rather than the unlit sprite material, so the night side is dark. The unlit
+  material is the fallback.
+- [TAB] was added for the checklist, because the cursor is captured while walking and cannot hover.
+
+### Verified (2026-11-15)
+- Batch compile: zero errors, zero warnings.
+- Windowed editor run with a temporary harness (deleted afterwards), on a scratch save file: OnGUI rendered, zero
+  errors or exceptions. Textures are 1024 × 512, the same instance on a second call, and still alive and identical
+  after a full flight ended; the design-view Earth kept its texture.
+- Screenshots checked: part cards with icons and chips, warning rows, ready banner, slot pills, tooltips over a
+  card, a warning row, the flight note badge, the opened colour legend, the station checklist collapsed and expanded,
+  the rank card, Earth and Moon close-ups.
+- Found and fixed on the way: `Mathf.SmoothStep` used as a threshold made the clouds a uniform veil and hid the maria.
+- **Not verified:** a standalone or web build (so the two new shader templates are untested in a build, and texture
+  generation time on the web is unknown); the animations in motion (only still frames were captured); the icons of
+  parts that are not on the first screen of the list (Apollo, RTG, rover and others were not captured); the final
+  softening of cloud and mare edges (changed after the last planet close-up was reviewed); the Red Alert window,
+  which was not changed.
+>>>>>>> Stashed changes
 
 ### Next phases (planned)
 - (On hold) Phase 4: 4-player co-op role ownership and segment sign-off; campaign unlocks; save progress.

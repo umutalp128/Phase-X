@@ -23,7 +23,7 @@ public class ProceduralSpacecraftView : MonoBehaviour
     readonly List<Pop> _pops = new List<Pop>();
     const float PopSeconds = 0.42f, PopStartScale = 0.05f;
 
-    Transform _earth, _moon, _orbitMarker, _backdrop;
+    Transform _earth, _moon, _orbitMarker, _backdrop, _clouds;
     bool _designVisible = true;
     LineRenderer _orbitLine;
     readonly List<Vector3> _orbitPts = new List<Vector3>();
@@ -182,10 +182,11 @@ public class ProceduralSpacecraftView : MonoBehaviour
         env.SetParent(transform, false);
         _backdrop = env;
         _earth = Prim(PrimitiveType.Sphere, env, EarthPos, Vector3.one * EarthR * 2f, new Vector3(0, 0, 23.4f),
-            PhaseXMaterials.Textured(PhaseXMaterials.EarthTexture(), 0.35f));
+            PhaseXMaterials.Textured(PhaseXMaterials.EarthTexture(), 0.42f, PhaseXMaterials.EarthNormalMap(), 1.1f));
         _earth.name = "Earth";
+        _clouds = AddEarthShells(_earth);
         _moon = Prim(PrimitiveType.Sphere, env, MoonPos, Vector3.one * MoonR * 2f, Vector3.zero,
-            PhaseXMaterials.Textured(PhaseXMaterials.MoonTexture(), 0.05f));
+            PhaseXMaterials.Textured(PhaseXMaterials.MoonTexture(), 0.06f, PhaseXMaterials.MoonNormalMap(), 1.35f));
         _moon.name = "Moon";
 
         var lineGo = new GameObject("OrbitPath");
@@ -199,6 +200,28 @@ public class ProceduralSpacecraftView : MonoBehaviour
         _orbitLine.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         _orbitMarker = Prim(PrimitiveType.Sphere, env, Vector3.zero, Vector3.one * 0.35f, Vector3.zero,
             PhaseXMaterials.Lit(new Color(1f, 0.8f, 0.3f), 0.5f, 0f, new Color(1.2f, 0.8f, 0.2f)));
+    }
+
+    /// <summary>
+    /// Cloud deck and atmosphere for an Earth sphere: "EarthClouds" (1.018 x, the shared cloud material) and
+    /// "EarthAtmosphere" (1.045 x, a faint blue tint). Both render before every other transparent object, so orbit
+    /// lines and trails are never washed out by them. Returns the cloud shell so the caller can rotate it.
+    /// </summary>
+    public static Transform AddEarthShells(Transform earth)
+    {
+        var clouds = Prim(PrimitiveType.Sphere, earth, Vector3.zero, Vector3.one * 1.018f, Vector3.zero, PhaseXMaterials.CloudShell());
+        clouds.name = "EarthClouds";
+        var air = Prim(PrimitiveType.Sphere, earth, Vector3.zero, Vector3.one * 1.045f, Vector3.zero, PhaseXMaterials.AtmosphereRim(new Color(0.28f, 0.68f, 1f, 0.14f)));
+        air.name = "EarthAtmosphere";
+        int order = -20;
+        foreach (var t in new[] { clouds, air })
+        {
+            var r = t.GetComponent<Renderer>();
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            r.receiveShadows = false;
+            r.sortingOrder = order++;
+        }
+        return clouds;
     }
 
     void UpdateOrbit(SpacecraftPart orbit)
@@ -742,6 +765,7 @@ public class ProceduralSpacecraftView : MonoBehaviour
         float dt = Time.deltaTime;
 
         if (_earth != null) _earth.Rotate(0, 4f * dt, 0, Space.Self);
+        if (_clouds != null) _clouds.Rotate(0, -1.3f * dt, 0, Space.Self);      // the cloud deck drifts against the ground
         if (_moon != null) _moon.Rotate(0, 1.5f * dt, 0, Space.Self);
         if (_orbitPts.Count > 1)
         {

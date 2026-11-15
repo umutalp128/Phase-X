@@ -17,10 +17,10 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
     // ---- layout (virtual pixels)
     static readonly Rect HeaderRect = new Rect(0, 0, W, 64);
     static readonly Rect CmlRect = new Rect(0, 64, W, 40);
-    static readonly Rect LeftRect = new Rect(14, 116, 470, 914);
-    static readonly Rect RightRect = new Rect(W - 14 - 470, 116, 470, 914);
-    static readonly Rect FooterRect = new Rect(0, H - 40, W, 40);
-    static readonly Rect ViewportRect = new Rect(494, 104, W - 2 * 494, H - 104 - 40);
+    static readonly Rect LeftRect = new Rect(14, 112, 410, 922);
+    static readonly Rect RightRect = new Rect(W - 14 - 410, 112, 410, 922);
+    static readonly Rect FooterRect = new Rect(0, H - 28, W, 28);
+    static readonly Rect ViewportRect = new Rect(434, 100, W - 2 * 434, H - 100 - 36);
 
     enum Modal { None, Briefing, Report }
     static Modal _modal = Modal.Briefing;
@@ -50,6 +50,11 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
     MissionCalculator _calc;
     Vector2 _listScroll;
     string _hoverTitle, _hoverBody;
+
+    // ---- smooth UI animation: modal pop-in (0..1) and the per-card hover state (0..1)
+    float _modalAnim = 1f;
+    Modal _modalShown = Modal.None;
+    readonly Dictionary<string, float> _cardHoverAnim = new Dictionary<string, float>();
     string _flash;
     float _flashUntil;
     float _reportAt = -1f;
@@ -62,7 +67,6 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
     class StatChip { public string Text; public Color C; public float W; }
     readonly Dictionary<string, List<StatChip>> _chips = new Dictionary<string, List<StatChip>>();
     readonly Dictionary<string, string> _line2 = new Dictionary<string, string>();
-    readonly Dictionary<string, float> _cardHeights = new Dictionary<string, float>();
     readonly List<SpacecraftPart> _cardParts = new List<SpacecraftPart>();
     MissionSegmentRole? _cardPartsRole;
     int _cardPartsCount = -1;
@@ -100,7 +104,7 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
     GUISkin _skin;
     GUIStyle _panel, _ink, _title, _subtitle, _h2, _label, _labelBold, _small, _right, _center, _btn, _btnOn,
         _card, _cardSel, _cardLocked, _cardHover, _launchReady, _launchNot, _okBox, _badBox, _window, _chip, _chipOn, _chipDone,
-        _starSmall, _chipText;
+        _starSmall, _chipText, _tipTitleSt;
     readonly List<Texture2D> _textures = new List<Texture2D>();
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
@@ -152,6 +156,14 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
     void Update()
     {
         if (_calc == null) return;
+
+        // modal pop-in: restart whenever a window opens, then run to 1 on unscaled time (about a quarter of a second)
+        if (_modal != _modalShown)
+        {
+            _modalShown = _modal;
+            if (_modal != Modal.None) _modalAnim = 0f;
+        }
+        _modalAnim = Mathf.MoveTowards(_modalAnim, 1f, Mathf.Min(Time.unscaledDeltaTime, 0.05f) * 4.5f);
 
         if (_reportAt > 0f && Time.unscaledTime >= _reportAt && !CrisisActive)
         {
@@ -275,6 +287,8 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
 
         _hoverTitle = null;
         _hoverBody = null;
+        _hoverSub = null;
+        _hoverPart = null;
 
         // Modal handling without GUI.ModalWindow (which logs "two modal windows" when the Game view runs OnGUI
         // more than once per frame): while a modal is open, input events are hidden from the workstation underneath.
@@ -303,12 +317,27 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
 
         if (_modal != Modal.None)
         {
-            Fill(new Rect(0, 0, W, H), new Color(0, 0.005f, 0.02f, 0.72f));
-            if (_modal == Modal.Briefing)
-                DrawModalPanel(new Rect(W / 2 - 520, 170, 1040, 700), DrawBriefingWindow);
-            else
-                DrawModalPanel(new Rect(W / 2 - 540, 140, 1080, 780), DrawReportWindow);
+            // the backdrop fades in and the window scales up from 92 % with a slight overshoot (ease-out-back)
+            float k = _modal == _modalShown ? Mathf.Clamp01(_modalAnim) : 0f;
+            Fill(new Rect(0, 0, W, H), new Color(0, 0.005f, 0.02f, 0.72f * k));
+            var panel = _modal == Modal.Briefing ? new Rect(W / 2 - 520, 170, 1040, 700) : new Rect(W / 2 - 540, 140, 1080, 780);
+            var baseMatrix = GUI.matrix;
+            if (k < 1f)
+            {
+                const float c1 = 1.70158f, c3 = c1 + 1f;
+                float u = k - 1f, back = 1f + c3 * u * u * u + c1 * u * u;
+                float s = Mathf.LerpUnclamped(0.92f, 1f, back);
+                Vector3 c = panel.center;
+                GUI.matrix = baseMatrix * Matrix4x4.TRS(c, Quaternion.identity, Vector3.one) * Matrix4x4.Scale(new Vector3(s, s, 1f)) * Matrix4x4.TRS(-c, Quaternion.identity, Vector3.one);
+                GUI.color = new Color(1f, 1f, 1f, Mathf.Clamp01(k * 1.6f));
+            }
+            if (_modal == Modal.Briefing) DrawModalPanel(panel, DrawBriefingWindow);
+            else DrawModalPanel(panel, DrawReportWindow);
+            GUI.matrix = baseMatrix;
+            GUI.color = Color.white;
         }
+
+        DrawFloatingTooltip();
     }
 
     /// <summary>Draw a modal panel: window background plus a clipped group, content coordinates relative to the panel.</summary>
@@ -418,10 +447,10 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
 
     // ---------------------------------------------------------------- left: tabs + part cards
 
-    static readonly (string label, MissionSegmentRole? role)[] SegmentTabs =
+    static readonly (string label, string key, MissionSegmentRole? role)[] SegmentTabs =
     {
-        ("[1] USER", MissionSegmentRole.UserSegment), ("[2] LAUNCH", MissionSegmentRole.LaunchSegment),
-        ("[3] SPACE", MissionSegmentRole.SpaceSegment), ("[4] GROUND", MissionSegmentRole.GroundSegment), ("[5] ALL", null)
+        ("USER", "1", MissionSegmentRole.UserSegment), ("LAUNCH", "2", MissionSegmentRole.LaunchSegment),
+        ("SPACE", "3", MissionSegmentRole.SpaceSegment), ("GROUND", "4", MissionSegmentRole.GroundSegment), ("ALL", "5", null)
     };
 
     /// <summary>The parts of the current segment tab, sorted by category. Rebuilt only when the tab or catalog changes.</summary>
@@ -441,32 +470,36 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
         GUI.Box(LeftRect, GUIContent.none, _panel);
         GUI.BeginGroup(LeftRect);
         float w = LeftRect.width;
-        GUI.Label(new Rect(16, 10, w - 32, 22), "MISSION SEGMENTS", _h2);
+        GUI.Label(new Rect(16, 8, w - 32, 22), "PARTS", _h2);
+        GUI.Label(new Rect(16, 8, w - 32, 22), Col($"{_calc.SelectedParts.Count} installed", Dim), Style(_labelBold, 11, TextAnchor.MiddleRight));
 
+        // segment tabs: the description of a tab appears on hover instead of sitting under the row
         var tabs = SegmentTabs;
-        float tw = (w - 32 - 4 * 6) / 5f;
+        float tw = (w - 32 - 4 * 5) / 5f;
+        var tabOff = Style(_btn, 11, TextAnchor.MiddleCenter);
+        var tabOn = Style(_btnOn, 11, TextAnchor.MiddleCenter);
         for (int i = 0; i < tabs.Length; i++)
         {
-            var r = new Rect(16 + i * (tw + 6), 38, tw, 34);
-            if (GUI.Button(r, tabs[i].label, Equals(_calc.RoleFilter, tabs[i].role) ? _btnOn : _btn)) SetTab(tabs[i].role);
+            var r = new Rect(16 + i * (tw + 5), 34, tw, 30);
+            bool on = Equals(_calc.RoleFilter, tabs[i].role);
+            if (GUI.Button(r, tabs[i].label, on ? tabOn : tabOff)) SetTab(tabs[i].role);
+            if (r.Contains(Event.current.mousePosition))
+                Hover(tabs[i].label + " SEGMENT", PhaseXDatabase.RoleDescription(tabs[i].role), "Key [" + tabs[i].key + "]", Cyan);
         }
-        GUI.Label(new Rect(16, 78, w - 32, 36), PhaseXDatabase.RoleDescription(_calc.RoleFilter), _small);
-        Fill(new Rect(14, 116, w - 28, 1), CyanDim);
+        Fill(new Rect(14, 72, w - 28, 1), CyanDim);
 
         // ---- scrollable part cards
         var parts = CardParts();
         float cardW = w - 32 - 14;
-        var tipStyle = Style(_small, 12, TextAnchor.UpperLeft);
         float contentH = 0;
         PartCategory? lastCat = null;
         for (int i = 0; i < parts.Count; i++)
         {
-            var p = parts[i];
-            if (p.Category != lastCat) { contentH += 30; lastCat = p.Category; }
-            contentH += CardHeight(p, cardW, tipStyle) + 8;
+            if (parts[i].Category != lastCat) { contentH += CategoryRowH; lastCat = parts[i].Category; }
+            contentH += CardH + 6;
         }
 
-        var view = new Rect(14, 124, w - 24, LeftRect.height - 136);
+        var view = new Rect(14, 78, w - 24, LeftRect.height - 88);
         bool mouseInList = view.Contains(Event.current.mousePosition);
         _listScroll = GUI.BeginScrollView(view, _listScroll, new Rect(0, 0, cardW + 4, contentH));
         float y = 0;
@@ -477,27 +510,27 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
             if (p.Category != lastCat)
             {
                 lastCat = p.Category;
-                string mode = MissionCalculator.IsSingleSlot(p.Category) ? "single slot - auto-replaces" : "multi-select";
-                GUI.Label(new Rect(2, y + 6, cardW, 22), Col(PhaseXDatabase.CategoryTitle(p.Category), CategoryColor(p.Category)) + "  " + Col("(" + mode + ")", Dim), Style(_labelBold, 13, TextAnchor.MiddleLeft));
-                y += 30;
+                if (y + CategoryRowH >= _listScroll.y && y <= _listScroll.y + view.height)
+                {
+                    Color cc = CategoryColor(p.Category);
+                    Fill(new Rect(2, y + 11, 8, 8), cc);
+                    GUI.Label(new Rect(16, y + 4, cardW - 100, 22), Col(PhaseXDatabase.CategoryTitle(p.Category), cc), Style(_labelBold, 12, TextAnchor.MiddleLeft));
+                    GUI.Label(new Rect(2, y + 4, cardW - 2, 22), Col(MissionCalculator.IsSingleSlot(p.Category) ? "PICK 1" : "PICK ANY", Dim), Style(_labelBold, 10, TextAnchor.MiddleRight));
+                }
+                y += CategoryRowH;
             }
-            float h = CardHeight(p, cardW, tipStyle);
             // cards scrolled out of view are skipped entirely
-            if (y + h >= _listScroll.y && y <= _listScroll.y + view.height) DrawCard(new Rect(2, y, cardW, h), p, tipStyle, mouseInList);
-            y += h + 8;
+            if (y + CardH >= _listScroll.y && y <= _listScroll.y + view.height) DrawCard(new Rect(2, y, cardW, CardH), p, mouseInList);
+            y += CardH + 6;
         }
         GUI.EndScrollView();
         GUI.EndGroup();
     }
 
-    float CardHeight(SpacecraftPart p, float w, GUIStyle tip)
-    {
-        if (_cardHeights.TryGetValue(p.Id, out float h)) return h;
-        _tmp.text = p.EducationalTooltip;
-        h = 72 + tip.CalcHeight(_tmp, w - 28);
-        _cardHeights[p.Id] = h;
-        return h;
-    }
+    /// <summary>Every card is the same compact height: icon, name, badges and one row of stat chips. Text lives in the tooltip.</summary>
+    const float CardH = 68f, CategoryRowH = 28f;
+
+    static float CardHeight(SpacecraftPart p) => CardH;
 
     /// <summary>A part the mission itself asks for: one of its recommended instruments or one of its destination orbits.</summary>
     bool IsMissionFit(SpacecraftPart p)
@@ -506,70 +539,89 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
         return System.Array.IndexOf(sc.RecommendedPayloadIds, p.Id) >= 0 || System.Array.IndexOf(sc.AllowedOrbitIds, p.Id) >= 0;
     }
 
-    void DrawCard(Rect r, SpacecraftPart p, GUIStyle tipStyle, bool mouseInList)
+    void DrawCard(Rect r, SpacecraftPart p, bool mouseInList)
     {
         bool unlocked = _calc.IsUnlocked(p);
         bool sel = _calc.IsSelected(p);
         bool hover = mouseInList && r.Contains(Event.current.mousePosition);
         bool fit = unlocked && IsMissionFit(p);
 
-        GUI.Box(r, GUIContent.none, !unlocked ? _cardLocked : sel ? _cardSel : hover ? _cardHover : _card);
-        Fill(new Rect(r.x, r.y, 4, r.height), CategoryColor(p.Category) * (unlocked ? 1f : 0.4f));
-
-        var nameStyle = Style(_labelBold, 15, TextAnchor.UpperLeft);
-        string status = !unlocked ? Col("LOCKED - LEVEL " + p.UnlockLevel, Dim) : sel ? Col("INSTALLED", Green) : hover ? Col("CLICK TO ADD", Cyan) : "";
-        GUI.Label(new Rect(r.x + 14, r.y + 8, r.width - 140, 22), unlocked ? p.Name : Col(p.Name, Dim), nameStyle);
-        GUI.Label(new Rect(r.xMax - 150, r.y + 9, 140, 20), status, Style(_labelBold, 11, TextAnchor.UpperRight));
-
-        // glowing "MISSION FIT" badge: this mission recommends the instrument or needs the orbit
-        float chipRight = r.xMax - 12;
-        if (fit)
+        // hover / selected animation: the card slides right and its accent bar thickens (ease-out)
+        _cardHoverAnim.TryGetValue(p.Id, out float t);
+        if (Event.current.type == EventType.Repaint)
         {
-            var br = new Rect(r.xMax - 126, r.y + 30, 116, 19);
-            float pulse = 0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 4f);
-            Fill(new Rect(br.x - 3, br.y - 3, br.width + 6, br.height + 6), new Color(Amber.r, Amber.g, Amber.b, 0.08f + 0.14f * pulse));
-            Fill(br, new Color(0.22f, 0.13f, 0.02f, 0.96f));
-            Fill(new Rect(br.x, br.y, br.width, 1), Amber);
-            Fill(new Rect(br.x, br.yMax - 1, br.width, 1), Amber);
-            if (_fitLabel == null) _fitLabel = StationProgress.Star + " MISSION FIT";
-            var old = GUI.contentColor;
-            GUI.contentColor = Color.Lerp(Amber, Color.white, 0.25f * pulse);
-            GUI.Label(br, _fitLabel, _chipText);
-            GUI.contentColor = old;
-            chipRight = br.x - 8;
+            t = Mathf.MoveTowards(t, hover || sel ? 1f : 0f, Mathf.Min(Time.unscaledDeltaTime, 0.05f) * 12f);
+            _cardHoverAnim[p.Id] = t;
         }
+        float e = 1f - (1f - t) * (1f - t) * (1f - t);
+        Color cat = CategoryColor(p.Category);
+        Color catShown = cat * (unlocked ? 1f : 0.4f); catShown.a = 1f;
 
-        // colour-coded stat chips: $M, kg, W, Mbps, m/s, Sci
-        var chips = ChipsFor(p);
-        float cx = r.x + 14;
-        var oldColor = GUI.contentColor;
-        for (int i = 0; i < chips.Count; i++)
+        var cr = new Rect(r.x + 5f * e, r.y, r.width - 5f, r.height);
+        GUI.Box(cr, GUIContent.none, !unlocked ? _cardLocked : sel ? _cardSel : hover ? _cardHover : _card);
+        Fill(new Rect(cr.x, cr.y, 4f + 4f * e, cr.height), catShown);
+        if (hover && unlocked) Frame(cr, new Color(cat.r, cat.g, cat.b, 0.55f * e));
+
+        DrawPartIcon(new Rect(cr.x + 12, cr.y + 8, 52, 52), p, cat, unlocked ? 1f : 0.4f);
+
+        // ---- compact status badges, right to left
+        float bx = cr.xMax - 8f;
+        var oldContent = GUI.contentColor;
+        if (!unlocked)
         {
-            var c = chips[i];
-            if (c.W <= 0f) { _tmp.text = c.Text; c.W = _chipText.CalcSize(_tmp).x + 14f; }
-            if (cx + c.W > chipRight) break;
-            var cr = new Rect(cx, r.y + 31, c.W, 17);
-            Color cc = unlocked ? c.C : Color.Lerp(c.C, Dim, 0.75f);
-            Fill(cr, new Color(cc.r, cc.g, cc.b, unlocked ? 0.16f : 0.07f));
-            Fill(new Rect(cr.x, cr.y, 2, cr.height), new Color(cc.r, cc.g, cc.b, unlocked ? 0.95f : 0.4f));
-            GUI.contentColor = cc;
-            GUI.Label(cr, c.Text, _chipText);
-            cx += c.W + 5f;
+            var br = new Rect(bx - 66, cr.y + 8, 66, 19);
+            Pill(br, new Color(0.07f, 0.085f, 0.11f), new Color(0.22f, 0.26f, 0.32f));
+            MiniIcon(Mini.Lock, br.x + 5, br.y + 1, Dim);
+            GUI.contentColor = Dim;
+            GUI.Label(new Rect(br.x + 22, br.y, br.width - 24, br.height), LevelLabel(p.UnlockLevel), _chipText);
+            bx = br.x - 5;
         }
-        GUI.contentColor = oldColor;
+        else
+        {
+            if (fit)
+            {
+                float pulse = 0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 4f);
+                var br = new Rect(bx - 52, cr.y + 8, 52, 19);
+                Fill(new Rect(br.x - 2, br.y - 2, br.width + 4, br.height + 4), new Color(StarGold.r, StarGold.g, StarGold.b, 0.07f + 0.15f * pulse));
+                Pill(br, new Color(0.22f, 0.14f, 0.02f, 0.97f), StarGold);
+                if (_fitLabel == null) _fitLabel = StationProgress.Star + " FIT";
+                GUI.contentColor = Color.Lerp(StarGold, Color.white, 0.3f * pulse);
+                GUI.Label(br, _fitLabel, _chipText);
+                bx = br.x - 5;
+            }
+            if (sel)
+            {
+                var br = new Rect(bx - 26, cr.y + 8, 26, 19);
+                Pill(br, new Color(0.05f, 0.24f, 0.12f), Green);
+                Check(br.x + 7, br.y + 4, 11, Green);
+                bx = br.x - 5;
+            }
+        }
+        GUI.contentColor = oldContent;
 
-        GUI.Label(new Rect(r.x + 14, r.y + 51, r.width - 28, 18), DetailLine(p), Style(_small, 12, TextAnchor.UpperLeft));
-        GUI.Label(new Rect(r.x + 14, r.y + 68, r.width - 28, r.height - 70), Col(p.EducationalTooltip, unlocked ? new Color(0.72f, 0.78f, 0.86f) : Dim), tipStyle);
+        // ---- name, then one row of stat chips
+        float tx = cr.x + 74f;
+        GUI.Label(new Rect(tx, cr.y + 8, Mathf.Max(20f, bx - tx), 20), unlocked ? p.Name : Col(p.Name, Dim), Style(_labelBold, p.Name.Length > 26 ? 12 : 14, TextAnchor.MiddleLeft));
+        DrawChips(p, tx, cr.y + 39, cr.xMax - 8f, unlocked);
 
+        // ---- everything else is in the floating tooltip
         if (hover)
-            Hover(p.Name + "  -  " + PhaseXDatabase.CategoryTitle(p.Category) + (MissionCalculator.IsSingleSlot(p.Category) ? " (single slot)" : "") + (fit ? "  -  MISSION FIT" : ""),
-                p.EducationalTooltip);
+            Hover(p.Name, (unlocked ? "" : $"Locked: unlocks at Level {p.UnlockLevel} (or in Sandbox).  ") + p.EducationalTooltip,
+                Col(PhaseXDatabase.CategoryTitle(p.Category), cat) + "    " + DetailLine(p) + (fit ? "    " + Col("MISSION FIT", StarGold) : ""), cat, p);
 
         if (GUI.Button(r, GUIContent.none, GUIStyle.none))
         {
-            if (!unlocked) { StationAudio.Buzzer(); Flash($"{p.Name} unlocks at Level {p.UnlockLevel} (or in Sandbox [F4])."); }
+            if (!unlocked) { StationAudio.Buzzer(); Flash($"{p.Name} unlocks at Level {p.UnlockLevel} (or in Sandbox)."); }
             else _calc.TogglePart(p);
         }
+    }
+
+    static readonly Dictionary<int, string> LevelLabels = new Dictionary<int, string>();
+
+    static string LevelLabel(int level)
+    {
+        if (!LevelLabels.TryGetValue(level, out var s)) { s = "LVL " + level; LevelLabels[level] = s; }
+        return s;
     }
 
     /// <summary>The stat chips of a part (cost, mass, power, data, delta-V, science). Built once per part.</summary>
@@ -581,120 +633,189 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
         if (p.PowerWatts > 0) list.Add(new StatChip { Text = $"+{p.PowerWatts:0} W", C = Green });
         else if (p.PowerWatts < 0) list.Add(new StatChip { Text = $"{p.PowerWatts:0} W", C = Red });
         if (p.DataRateMbps > 0) list.Add(new StatChip { Text = $"{p.DataRateMbps:0.##} Mbps", C = new Color(0.3f, 0.75f, 1f) });
-        if (p.DeltaV > 0) list.Add(new StatChip { Text = (p.Category == PartCategory.Orbit ? "needs " : "") + $"{p.DeltaV:0} m/s", C = new Color(1f, 0.6f, 0.15f) });
+        if (p.DeltaV > 0) list.Add(new StatChip { Text = $"{p.DeltaV:0} m/s", C = new Color(1f, 0.6f, 0.15f) });
         if (p.ScienceScore > 0) list.Add(new StatChip { Text = $"+{p.ScienceScore:0} Sci", C = new Color(0.35f, 0.95f, 0.55f) });
         _chips[p.Id] = list;
         return list;
     }
 
-    /// <summary>The grey detail line under the chips: capacity, reliability, lifetime. Built once per part.</summary>
+    /// <summary>The grey detail line of a part (capacity, reliability, lifetime), shown in the tooltip. Built once per part.</summary>
     string DetailLine(SpacecraftPart p)
     {
         if (_line2.TryGetValue(p.Id, out var s)) return s;
         var bits = new List<string>();
         switch (p.Category)
         {
-            case PartCategory.LaunchVehicle: bits.Add($"Lifts {p.MaxPayloadCapacityKg:0} kg"); break;
-            case PartCategory.Structure: bits.Add($"Carries {p.MaxPayloadCapacityKg:0} kg of parts"); break;
+            case PartCategory.LaunchVehicle: bits.Add($"lifts {p.MaxPayloadCapacityKg:0} kg"); break;
+            case PartCategory.Structure: bits.Add($"carries {p.MaxPayloadCapacityKg:0} kg"); break;
             case PartCategory.Propulsion: bits.Add($"for a {p.MaxPayloadCapacityKg:0} kg craft"); break;
             case PartCategory.Orbit:
-                bits.Add(p.DeltaV > 0 ? "insertion burn" : "No insertion burn");
-                if (p.StationKeepingDvPerMonth > 0) bits.Add($"keep {p.StationKeepingDvPerMonth:0} m/s/month");
+                bits.Add(p.DeltaV > 0 ? "insertion burn" : "no insertion burn");
+                if (p.StationKeepingDvPerMonth > 0) bits.Add($"keep {p.StationKeepingDvPerMonth:0} m/s/mo");
                 break;
-            case PartCategory.Comms: bits.Add("downlink"); break;
-            case PartCategory.Payload: if (p.DataRateMbps > 0) bits.Add("generates data"); break;
         }
         bits.Add($"rel {p.Reliability * 100f:0.#}%");
         if (p.LifetimeMonths > 0) bits.Add($"life {p.LifetimeMonths:0} mo");
         if (p.IsSolar) bits.Add("solar");
-        s = Col(string.Join("    ", bits), Dim);
+        s = Col(string.Join("  |  ", bits), Dim);
         _line2[p.Id] = s;
         return s;
     }
 
     // ---------------------------------------------------------------- right: telemetry + validation + launch
 
+    static readonly Color[] GaugePips =
+    {
+        new Color(1f, 0.68f, 0.18f), new Color(0.72f, 0.77f, 0.84f), new Color(1f, 0.82f, 0.25f),
+        new Color(0.3f, 0.75f, 1f), new Color(1f, 0.6f, 0.15f), new Color(0.75f, 0.55f, 1f)
+    };
+
     void DrawRightPanel()
     {
         var rep = _calc.Report;
+        var sc = _calc.CurrentScenario;
         GUI.Box(RightRect, GUIContent.none, _panel);
         GUI.BeginGroup(RightRect);
-        float w = RightRect.width;
-        GUI.Label(new Rect(16, 10, w - 32, 22), "LIVE TELEMETRY  //  6 RESOURCES", _h2);
+        float w = RightRect.width, iw = w - 32;
+        Vector2 mouse = Event.current.mousePosition;
+        GUI.Label(new Rect(16, 8, iw, 22), "TELEMETRY", _h2);
 
         // The bar fills glide towards their real values (unscaled time, once per frame, never NaN).
         bool step = Event.current.type == EventType.Repaint && Time.frameCount != _gaugeFrame;
         float glide = Mathf.Clamp01(Time.unscaledDeltaTime * 10f);
-        float y = 40;
+        float y = 36;
         int gi = 0;
         foreach (var g in rep.Gauges)
         {
             float target = Mathf.Clamp01(g.Ratio);
             if (float.IsNaN(target)) target = 0f;
             if (step) _gaugeShown[gi] = float.IsNaN(_gaugeShown[gi]) ? target : Mathf.Lerp(_gaugeShown[gi], target, glide);
-            DrawGauge(new Rect(16, y, w - 32, 54), g, _gaugeShown[gi], target);
-            y += 58;
+            DrawGauge(new Rect(16, y, iw, 42), g, _gaugeShown[gi], target, GaugePips[gi % GaugePips.Length], mouse);
+            y += 46;
             gi++;
         }
         if (step) _gaugeFrame = Time.frameCount;
 
-        var sc = _calc.CurrentScenario;
-        Color sciC = rep.Science >= sc.TargetScience ? Green : Red;
-        Color relC = rep.Reliability >= sc.MinReliability ? Green : Red;
-        GUI.Label(new Rect(16, y, w - 32, 22),
-            Col("SCIENCE ", Dim) + Col($"{rep.Science:0} / {sc.TargetScience:0} pts", sciC) + "      " +
-            Col("RELIABILITY ", Dim) + Col($"{rep.Reliability * 100f:0.0}%", relC) + Col($" (min {sc.MinReliability * 100f:0}%)", Dim),
-            Style(_labelBold, 13, TextAnchor.MiddleLeft));
-        y += 32;
+        // ---- science and reliability mini-meters
+        float mw = (iw - 8) / 2f;
+        bool sciOk = rep.Science >= sc.TargetScience, relOk = rep.Reliability >= sc.MinReliability;
+        var sr = new Rect(16, y + 2, mw, 50);
+        MiniMeter(sr, "SCIENCE", $"{rep.Science:0} / {sc.TargetScience:0}", sc.TargetScience > 0f ? rep.Science / sc.TargetScience : 1f, sciOk ? Green : Red);
+        if (sr.Contains(mouse))
+            Hover("Science return", "Points from instruments and the chosen orbit. If the radio cannot keep up with the instruments, data is lost and science drops.",
+                $"{rep.Science:0} of {sc.TargetScience:0} pts needed", sciOk ? Green : Red);
+        var rr = new Rect(16 + mw + 8, y + 2, mw, 50);
+        MiniMeter(rr, "RELIABILITY", $"{rep.Reliability * 100f:0.0}%", rep.Reliability, relOk ? Green : Red, sc.MinReliability);
+        if (rr.Contains(mouse))
+            Hover("Reliability", "Every part can fail, so the reliabilities multiply: more parts means more ways to lose the mission.",
+                $"{rep.Reliability * 100f:0.0}%  (minimum {sc.MinReliability * 100f:0}%)", relOk ? Green : Red);
+        y += 62;
 
-        GUI.Label(new Rect(16, y, w - 32, 22), "ENGINEERING VALIDATION", _h2);
-        y += 28;
-        float boxBottom = RightRect.height - 108;
-        var box = new Rect(16, y, w - 32, boxBottom - y);
+        // ---- engineering validation: a banner and pills, details on hover
+        GUI.Label(new Rect(16, y, iw, 22), "VALIDATION", _h2);
+        y += 26;
+        var box = new Rect(16, y, iw, RightRect.height - 108 - y);
         bool ready = rep.MissionReady;
-        var warnings = rep.Warnings;
-        GUI.Box(box, GUIContent.none, ready ? _okBox : _badBox);
-        GUI.BeginGroup(box);
-        if (ready)
-        {
-            GUI.Label(new Rect(14, 10, box.width - 28, 26), Col("ALL SYSTEMS GO", Green), Style(_labelBold, 20, TextAnchor.UpperLeft));
-            GUI.Label(new Rect(14, 38, box.width - 28, 22), "Design is compatible. Ready for CML 3 launch review.", Style(_label, 13, TextAnchor.UpperLeft));
-            float ay = 70;
-            foreach (var a in rep.Advice)
-            {
-                var c = new GUIContent("- " + a);
-                float h = _small.CalcHeight(c, box.width - 28);
-                GUI.Label(new Rect(14, ay, box.width - 28, h), c, _small);
-                ay += h + 4;
-            }
-        }
-        else
-        {
-            GUI.Label(new Rect(14, 10, box.width - 28, 24), Col(warnings.Count + " ROOT-CAUSE WARNING" + (warnings.Count == 1 ? "" : "S"), Red), Style(_labelBold, 16, TextAnchor.UpperLeft));
-            float wy = 40;
-            var ws = Style(_label, 12, TextAnchor.UpperLeft);
-            foreach (var wmsg in warnings)
-            {
-                var c = new GUIContent(Col("> ", Red) + wmsg);
-                float h = ws.CalcHeight(c, box.width - 28);
-                if (wy + h > box.height - 6) { GUI.Label(new Rect(14, wy, box.width - 28, 18), Col("...", Dim), ws); break; }
-                GUI.Label(new Rect(14, wy, box.width - 28, h), c, ws);
-                wy += h + 6;
-            }
-        }
-        GUI.EndGroup();
+        float pulse = 0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 3f);
+        if (ready) DrawReadyBox(box, rep, mouse, pulse);
+        else DrawWarningBox(box, rep, mouse, pulse);
 
-        var lr = new Rect(16, RightRect.height - 96, w - 32, 82);
-        string label = !ready ? "LAUNCH (NOT READY)\n<size=13>[SPACEBAR] for root-cause report</size>"
-            : LaunchOverride != null ? "DESIGN APPROVED\n<size=13>pull the LAUNCH LEVER at the window console</size>"
-            : "LAUNCH MISSION\n<size=13>[SPACEBAR] / CLICK</size>";
+        var lr = new Rect(16, RightRect.height - 96, iw, 82);
+        string label = !ready ? "LAUNCH (NOT READY)\n<size=12>[SPACE] root-cause report</size>"
+            : LaunchOverride != null ? "DESIGN APPROVED\n<size=12>pull the LAUNCH LEVER at the window</size>"
+            : "LAUNCH MISSION\n<size=12>[SPACE] / CLICK</size>";
         if (GUI.Button(lr, label, ready ? _launchReady : _launchNot)) RequestLaunch();
-        if (lr.Contains(Event.current.mousePosition))
-            Hover("Launch Review", "Submits the design to the review board. A ready design advances to CML 4; otherwise the launch is scrubbed with a root-cause report.");
+        if (lr.Contains(mouse))
+            Hover("Launch review", "Submits the design to the review board. A ready design advances to CML 4; otherwise the launch is scrubbed with a root-cause report.",
+                null, ready ? Amber : Red);
         GUI.EndGroup();
     }
 
-    void DrawGauge(Rect r, ResourceGauge g, float shown, float target)
+    /// <summary>"ALL SYSTEMS GO": glowing banner, one check pill per subsystem, and tip pills that open on hover.</summary>
+    void DrawReadyBox(Rect box, MissionReport rep, Vector2 mouse, float pulse)
+    {
+        GUI.Box(box, GUIContent.none, _okBox);
+        var banner = new Rect(box.x + 10, box.y + 10, box.width - 20, 44);
+        Fill(new Rect(banner.x - 3, banner.y - 3, banner.width + 6, banner.height + 6), new Color(Green.r, Green.g, Green.b, 0.06f + 0.12f * pulse));
+        RoundFill(banner, new Color(0.05f, 0.3f, 0.15f));
+        Check(banner.x + 14, banner.y + 12, 20, Green);
+        GUI.Label(new Rect(banner.x + 46, banner.y, banner.width - 50, banner.height), Col("ALL SYSTEMS GO", Color.Lerp(Green, Color.white, 0.25f * pulse)), Style(_labelBold, 19, TextAnchor.MiddleLeft));
+        if (banner.Contains(mouse)) Hover("All systems go", "The design is compatible and ready for the CML 3 launch review.", null, Green);
+
+        string[] names = { "BUDGET", "MASS", "POWER", "ORBIT", "COMMS" };
+        float px = box.x + 10, py = banner.yMax + 10, pw = (box.width - 20 - 2 * 6) / 3f;
+        var old = GUI.contentColor;
+        for (int i = 0; i < names.Length; i++)
+        {
+            var pr = new Rect(px + (i % 3) * (pw + 6), py + (i / 3) * 30, pw, 24);
+            Pill(pr, new Color(0.04f, 0.2f, 0.11f), new Color(Green.r, Green.g, Green.b, 0.7f));
+            Check(pr.x + 7, pr.y + 6, 12, Green);
+            GUI.contentColor = Green;
+            GUI.Label(new Rect(pr.x + 20, pr.y, pr.width - 22, pr.height), names[i], _chipText);
+        }
+        GUI.contentColor = old;
+
+        float ty = py + 68;
+        for (int i = 0; i < rep.Advice.Count; i++)
+        {
+            var tr = new Rect(box.x + 10, ty, box.width - 20, 28);
+            if (tr.yMax > box.yMax - 6) break;
+            bool hov = tr.Contains(mouse);
+            Pill(tr, hov ? new Color(0.2f, 0.16f, 0.04f) : new Color(0.1f, 0.1f, 0.06f), new Color(Amber.r, Amber.g, Amber.b, hov ? 1f : 0.55f));
+            MiniIcon(Mini.Bulb, tr.x + 8, tr.y + 6, Amber);
+            GUI.Label(new Rect(tr.x + 32, tr.y, tr.width - 40, tr.height), Col("TIP " + (i + 1), Amber) + Col("   hover to read", Dim), Style(_labelBold, 11, TextAnchor.MiddleLeft));
+            if (hov) Hover("Engineer's tip", rep.Advice[i], null, Amber);
+            ty += 34;
+        }
+    }
+
+    /// <summary>Not ready: one compact row per root cause. The short title is on the row, the full sentence is in the tooltip.</summary>
+    void DrawWarningBox(Rect box, MissionReport rep, Vector2 mouse, float pulse)
+    {
+        var warnings = rep.Warnings;
+        GUI.Box(box, GUIContent.none, _badBox);
+        MiniIcon(Mini.Warning, box.x + 12, box.y + 11, Red);
+        GUI.Label(new Rect(box.x + 36, box.y + 8, box.width - 46, 22),
+            Col(warnings.Count == 0 ? "ADD PARTS TO BEGIN" : warnings.Count + (warnings.Count == 1 ? " ISSUE" : " ISSUES"), Red), Style(_labelBold, 15, TextAnchor.MiddleLeft));
+        GUI.Label(new Rect(box.x + 12, box.y + 8, box.width - 24, 22), Col("HOVER FOR DETAILS", new Color(0.62f, 0.45f, 0.44f)), Style(_labelBold, 9, TextAnchor.MiddleRight));
+
+        float wy = box.y + 38;
+        const float rowH = 32f;
+        for (int i = 0; i < warnings.Count; i++)
+        {
+            var row = new Rect(box.x + 8, wy, box.width - 16, rowH);
+            if (row.yMax + rowH + 6 > box.yMax - 6 && i < warnings.Count - 1)
+            {
+                GUI.Label(new Rect(row.x + 8, wy, row.width - 16, 22), Col($"+ {warnings.Count - i} more (press LAUNCH for the full report)", Dim), Style(_labelBold, 10, TextAnchor.MiddleLeft));
+                break;
+            }
+            string wmsg = warnings[i];
+            // "missing subsystems" only means the design is unfinished: amber. A violated constraint is red.
+            Color c = wmsg.StartsWith("MISSING") ? Amber : Red;
+            bool hov = row.Contains(mouse);
+            RoundFill(row, new Color(c.r * 0.22f, c.g * 0.14f, c.b * 0.14f, hov ? 1f : 0.85f));
+            Fill(new Rect(row.x, row.y + 2, 3 + (hov ? 2 : 0), row.height - 4), c);
+            if (hov) Frame(row, c);
+            MiniIcon(Mini.Warning, row.x + 12, row.y + 8, c);
+            GUI.Label(new Rect(row.x + 36, row.y, row.width - 44, row.height), Col(ShortTitleCached(wmsg), Color.Lerp(c, Color.white, 0.55f)), Style(_labelBold, 12, TextAnchor.MiddleLeft));
+            if (hov) Hover(ShortTitleCached(wmsg), wmsg, "Root cause", c);
+            wy += rowH + 6;
+        }
+    }
+
+    /// <summary>A small card: label, value and a progress bar, with an optional minimum marker.</summary>
+    void MiniMeter(Rect r, string label, string value, float ratio, Color c, float marker = -1f)
+    {
+        RoundFill(r, new Color(0.075f, 0.105f, 0.16f));
+        Frame(r, new Color(0.15f, 0.22f, 0.32f));
+        GUI.Label(new Rect(r.x + 10, r.y + 5, r.width - 20, 18), Col(label, Dim), Style(_labelBold, 10, TextAnchor.MiddleLeft));
+        GUI.Label(new Rect(r.x + 10, r.y + 5, r.width - 20, 18), Col(value, c), Style(_labelBold, 13, TextAnchor.MiddleRight));
+        var bar = new Rect(r.x + 10, r.y + 31, r.width - 20, 8);
+        MiniBar(bar, ratio, c);
+        if (marker >= 0f) Fill(new Rect(bar.x + bar.width * Mathf.Clamp01(marker) - 1, bar.y - 3, 2, bar.height + 6), new Color(1f, 1f, 1f, 0.7f));
+    }
+
+    void DrawGauge(Rect r, ResourceGauge g, float shown, float target, Color pip, Vector2 mouse)
     {
         float ratio = g.Ratio;
         Color c;
@@ -702,22 +823,26 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
         else if (g.LowerIsBetter) c = (g.Limit <= 0f && g.Value > 0f) || ratio > 1f ? Red : ratio > 0.85f ? Amber : Green;
         else c = ratio >= 1f ? Green : ratio >= 0.75f ? Amber : Red;
         if (g.Value <= 0f && g.Limit <= 0f) c = Dim;
+        bool hov = r.Contains(mouse);
 
-        GUI.Label(new Rect(r.x, r.y, r.width, 20), Col(g.Name, Dim), Style(_labelBold, 12, TextAnchor.MiddleLeft));
-        string val = g.Enabled ? g.Display : g.Display + "  (not checked)";
-        GUI.Label(new Rect(r.x, r.y, r.width, 20), Col(val, c == Green ? TextC : c), Style(_labelBold, 13, TextAnchor.MiddleRight));
+        Fill(new Rect(r.x, r.y + 6, 7, 7), g.Enabled ? pip : Dim);
+        GUI.Label(new Rect(r.x + 13, r.y, r.width - 13, 20), Col(g.Name, hov ? Color.white : TextC), Style(_labelBold, 11, TextAnchor.MiddleLeft));
+        GUI.Label(new Rect(r.x, r.y, r.width, 20), Col(g.Display, c == Green ? TextC : c), Style(_labelBold, 12, TextAnchor.MiddleRight));
 
-        var bar = new Rect(r.x, r.y + 24, r.width, 14);
+        var bar = new Rect(r.x, r.y + 23, r.width, 14);
         Fill(bar, Track);
         float fillW = bar.width * Mathf.Clamp01(shown);
         Fill(new Rect(bar.x, bar.y, fillW, bar.height), c);
-        Fill(new Rect(bar.x, bar.y, fillW, 3), new Color(1f, 1f, 1f, 0.16f));                 // top highlight
+        Fill(new Rect(bar.x, bar.y, fillW, 3), new Color(1f, 1f, 1f, 0.18f));                 // top highlight
+        // segment gaps cut the bar into 24 cells
+        float cell = bar.width / 24f;
+        for (int i = 1; i < 24; i++) Fill(new Rect(bar.x + i * cell - 1, bar.y, 2, bar.height), new Color(0.035f, 0.05f, 0.08f, 0.9f));
         if (Mathf.Abs(shown - target) > 0.004f && fillW > 2f)                                   // bright leading edge while the bar moves
             Fill(new Rect(bar.x + fillW - 3, bar.y - 1, 3, bar.height + 2), new Color(1f, 1f, 1f, 0.85f));
         if (!g.LowerIsBetter || g.Limit > 0f) Fill(new Rect(bar.x + bar.width - 2, bar.y - 3, 2, bar.height + 6), new Color(1, 1, 1, 0.5f));
-        GUI.Label(new Rect(r.x, r.y + 38, r.width, 16),
-            Col(g.LowerIsBetter ? "must stay under the limit" : "must reach the target", new Color(0.4f, 0.47f, 0.56f)),
-            Style(_small, 10, TextAnchor.UpperLeft));
+        if (hov)
+            Hover(g.Name, (g.LowerIsBetter ? "Must stay under the mission limit." : "Must reach the mission target.") + (g.Enabled ? "" : "  Not checked on this mission."),
+                g.Display, c == Dim ? Cyan : c);
     }
 
     // ---------------------------------------------------------------- viewport + footer
@@ -728,55 +853,85 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
         var lv = _calc.Selected(PartCategory.LaunchVehicle);
         var orbit = _calc.Selected(PartCategory.Orbit);
         var bus = _calc.Selected(PartCategory.Structure);
-        float x = ViewportRect.x + 16, y = ViewportRect.y + 14;
-        var s = Style(_labelBold, 12, TextAnchor.UpperLeft);
-        GUI.Label(new Rect(x, y, 600, 18), Col("3D MODULAR SPACECRAFT VIEWPORT", Cyan), s);
-        GUI.Label(new Rect(x, y + 20, 600, 18), Col("ROCKET  ", Dim) + (lv != null ? lv.Name : Col("not selected", Red)), s);
-        GUI.Label(new Rect(x, y + 38, 600, 18), Col("ORBIT   ", Dim) + (orbit != null ? orbit.Name : Col("not selected", Red)), s);
-        GUI.Label(new Rect(x, y + 56, 600, 18), Col("BUS     ", Dim) + (bus != null ? bus.Name : Col("not selected", Red)), s);
-        GUI.Label(new Rect(x, y + 74, 600, 18), Col("MODULES ", Dim) + _calc.SelectedParts.Count + " installed", s);
+        int payloads = 0;
+        for (int i = 0; i < _calc.SelectedParts.Count; i++) if (_calc.SelectedParts[i].Category == PartCategory.Payload) payloads++;
+        Vector2 mouse = Event.current.mousePosition;
 
-        GUI.Label(new Rect(ViewportRect.xMax - 416, ViewportRect.y + 14, 400, 18),
-            Col(sc.IsSandbox ? "SANDBOX" : "LEVEL " + sc.DifficultyLevel, Amber) + Col("   |   SCORE ", Dim) + $"{_calc.Report.Score:0}",
-            Style(_labelBold, 13, TextAnchor.UpperRight));
+        // four slot pills replace the old block of text: colour says "filled" or "missing", hover says what is in it
+        float x = ViewportRect.x + 14, y = ViewportRect.y + 12;
+        x = SlotPill(x, y, Mini.Rocket, "ROCKET", lv, "No launch vehicle yet", "Pick a rocket in the LAUNCH tab. It sets how much mass you can lift, and usually most of the cost.", mouse);
+        x = SlotPill(x, y, Mini.Orbit, "ORBIT", orbit, "No destination yet", "Pick an orbit in the USER tab. The mission briefing says where the spacecraft has to go.", mouse);
+        x = SlotPill(x, y, Mini.Bus, "BUS", bus, "No spacecraft bus yet", "Pick a bus in the SPACE tab. It is the body every other module is bolted to.", mouse);
+
+        var pr = new Rect(x, y, 142, 30);
+        Color pc = payloads > 0 ? Green : Red;
+        Pill(pr, new Color(0.03f, 0.05f, 0.08f, 0.82f), new Color(pc.r, pc.g, pc.b, payloads > 0 ? 0.85f : 0.5f));
+        MiniIcon(Mini.Payload, pr.x + 9, pr.y + 7, pc);
+        GUI.Label(new Rect(pr.x + 32, pr.y, pr.width - 36, pr.height), Col("PAYLOADS", payloads > 0 ? TextC : Dim) + "  " + Col(payloads.ToString(), pc), Style(_labelBold, 11, TextAnchor.MiddleLeft));
+        if (pr.Contains(mouse))
+        {
+            string names = string.Join(",  ", _calc.SelectedParts.Where(p => p.Category == PartCategory.Payload).Select(p => p.Name));
+            Hover(payloads > 0 ? "Science payloads" : "No science payload yet",
+                payloads > 0 ? names : "Pick instruments in the SPACE tab. Parts with a FIT badge are the ones this mission recommends.",
+                $"{_calc.SelectedParts.Count} modules installed", pc);
+        }
+
+        // one compact badge: best stars and the live design score
         int bestStars = StationProgress.BestStars(sc.Id);
-        GUI.Label(new Rect(ViewportRect.xMax - 416, ViewportRect.y + 34, 400, 18),
-            bestStars > 0 ? Col("MISSION BEST  ", Dim) + Col(StationProgress.StarText(bestStars), StarGold) + $"  {StationProgress.BestScore(sc.Id):0} / 100"
-                          : Col("MISSION BEST  not flown yet", Dim),
-            Style(_labelBold, 12, TextAnchor.UpperRight));
+        var br = new Rect(ViewportRect.xMax - 14 - 196, y, 196, 30);
+        Pill(br, new Color(0.03f, 0.05f, 0.08f, 0.82f), new Color(StarGold.r, StarGold.g, StarGold.b, 0.6f));
+        GUI.Label(new Rect(br.x + 12, br.y, 70, br.height), Col(StationProgress.StarText(bestStars), StarGold), Style(_labelBold, 15, TextAnchor.MiddleLeft));
+        GUI.Label(new Rect(br.x + 70, br.y, br.width - 82, br.height), Col("SCORE ", Dim) + $"{_calc.Report.Score:0}", Style(_labelBold, 13, TextAnchor.MiddleRight));
+        if (br.Contains(mouse))
+            Hover(sc.IsSandbox ? "Sandbox" : "Level " + sc.DifficultyLevel + "  -  " + sc.Title,
+                "The score is live: it rises as the design gets closer to ready. Stars are earned when the flight is finished, and the best result is kept.",
+                bestStars > 0 ? $"Best {StationProgress.BestScore(sc.Id):0} / 100" : "Not flown yet", StarGold);
 
         if (_reportAt > 0f || _simStartAt > 0f)
         {
             bool ok = _calc.LastLaunchReport != null && _calc.LastLaunchReport.MissionReady;
             GUI.Label(new Rect(ViewportRect.x, ViewportRect.yMax - 120, ViewportRect.width, 40),
-                ok ? Col("IGNITION ... LIFTOFF!", Amber) : Col("LAUNCH SCRUBBED - REVIEWING ROOT CAUSES", Red), Style(_labelBold, 26, TextAnchor.MiddleCenter));
+                ok ? Col("IGNITION ... LIFTOFF!", Amber) : Col("LAUNCH SCRUBBED", Red), Style(_labelBold, 26, TextAnchor.MiddleCenter));
         }
-        GUI.Label(new Rect(ViewportRect.x, ViewportRect.yMax - 30, ViewportRect.width, 22),
-            Col("Hold LEFT / RIGHT / MIDDLE mouse to orbit 360   |   Scroll to zoom", new Color(0.45f, 0.55f, 0.65f)),
-            Style(_small, 12, TextAnchor.MiddleCenter));
+    }
+
+    /// <summary>One slot pill of the viewport header. Returns the x of the next pill.</summary>
+    float SlotPill(float x, float y, Mini icon, string label, SpacecraftPart part, string missingTitle, string missingBody, Vector2 mouse)
+    {
+        var r = new Rect(x, y, 122, 30);
+        bool ok = part != null;
+        Color c = ok ? Green : Red;
+        bool hov = r.Contains(mouse);
+        Pill(r, new Color(0.03f, 0.05f, 0.08f, hov ? 0.95f : 0.82f), new Color(c.r, c.g, c.b, ok ? 0.85f : 0.5f));
+        MiniIcon(icon, r.x + 9, r.y + 7, c);
+        GUI.Label(new Rect(r.x + 32, r.y, r.width - 54, r.height), Col(label, ok ? TextC : Dim), Style(_labelBold, 11, TextAnchor.MiddleLeft));
+        if (ok) Check(r.xMax - 20, r.y + 9, 11, Green);
+        else Fill(new Rect(r.xMax - 19, r.y + 14, 9, 2), new Color(c.r, c.g, c.b, 0.8f));
+        if (hov)
+        {
+            if (ok) Hover(part.Name, part.EducationalTooltip, Col(PhaseXDatabase.CategoryTitle(part.Category), CategoryColor(part.Category)) + "    " + DetailLine(part), CategoryColor(part.Category), part);
+            else Hover(missingTitle, missingBody, null, Red);
+        }
+        return r.xMax + 8;
     }
 
     void DrawFooter()
     {
         GUI.Box(FooterRect, GUIContent.none, _ink);
         Fill(new Rect(0, FooterRect.y, W, 1), CyanDim);
-        var tag = new Rect(14, FooterRect.y + 8, 110, 24);
-        string title, body;
-        if (_flash != null && Time.unscaledTime < _flashUntil) { title = "NOTICE"; body = Col(_flash, Amber); }
-        else if (_hoverTitle != null) { title = "ADVISOR"; body = $"<b>{_hoverTitle}</b>   " + Col(_hoverBody, Dim); }
-        else
+        if (_flash != null && Time.unscaledTime < _flashUntil)
         {
-            title = "CONTROLS";
-            body = Col($"[F1-F{Mathf.Min(9, PhaseXDatabase.Scenarios.Count)}] Mission    [1-4] Segment tab    [5] All parts    [SPACE] Launch    [C] Clear design    Mouse: orbit / zoom the viewport", Dim);
+            MiniIcon(Mini.Info, 16, FooterRect.y + 6, Amber);
+            GUI.Label(new Rect(40, FooterRect.y, W - 60, FooterRect.height), Col(_flash, Amber), Style(_labelBold, 13, TextAnchor.MiddleLeft));
+            return;
         }
-        GUI.Box(tag, title, _chipOn);
-        GUI.Label(new Rect(136, FooterRect.y, W - 150, FooterRect.height), body, Style(_label, 14, TextAnchor.MiddleLeft));
-    }
-
-    void Hover(string title, string body)
-    {
-        _hoverTitle = title;
-        _hoverBody = body;
+        float x = 16, y = FooterRect.y;
+        x = FooterHint(x, y, "SPACE", "Launch");
+        x = FooterHint(x, y, "1-5", "Tabs");
+        x = FooterHint(x, y, "DRAG / SCROLL", "3D view");
+        x = FooterHint(x, y, "C", "Clear");
+        FooterHint(x, y, "F1-F" + Mathf.Min(9, PhaseXDatabase.Scenarios.Count), "Mission");
+        GUI.Label(new Rect(W - 420, y, 404, FooterRect.height), Col("Hover anything for details", new Color(0.4f, 0.47f, 0.56f)), Style(_small, 12, TextAnchor.MiddleRight));
     }
 
     // ---------------------------------------------------------------- modal windows
@@ -1058,5 +1213,6 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
 
         _starSmall = Text("px_star", 9, StarGold, FontStyle.Bold, TextAnchor.UpperRight, false);
         _chipText = Text("px_chiptext", 11, Color.white, FontStyle.Bold, TextAnchor.MiddleCenter, false);
+        _tipTitleSt = Text("px_tiptitle", 15, Color.white, FontStyle.Bold, TextAnchor.UpperLeft, true);
     }
 }

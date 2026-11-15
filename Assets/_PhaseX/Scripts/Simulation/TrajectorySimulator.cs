@@ -60,7 +60,7 @@ public class TrajectorySimulator : MonoBehaviour
     ProceduralSpacecraftView _design;
     Camera _cam;
     GameObject _root;
-    Transform _earth, _moonAnchor, _moonMesh, _craft, _rocket, _model, _marker, _rover;
+    Transform _clouds, _earth, _moonAnchor, _moonMesh, _craft, _rocket, _model, _marker, _rover;
     LineRenderer _parkLine, _transferLine, _lunarLine, _moonPath, _linkEarth, _linkRover;
     // Parts of the orbiting spacecraft that leave with the lander: the docked Lunar Module and its ALSEP package
     // (Apollo), or the stowed rover (far-side mission). Hidden while the separate lander model is flying.
@@ -190,15 +190,15 @@ public class TrajectorySimulator : MonoBehaviour
         _root = new GameObject("[PHASE X] TrajectorySimulation");
         _root.transform.SetParent(transform, false);
 
-        var earthTex = PhaseXMaterials.EarthTexture();
-        var moonTex = PhaseXMaterials.MoonTexture();
-        _owned.Add(earthTex); _owned.Add(moonTex);
-        var earthMat = PhaseXMaterials.Textured(earthTex, 0.35f);
-        var moonMat = PhaseXMaterials.Textured(moonTex, 0.05f);
+        // The planet textures are cached in PhaseXMaterials and shared with the design view: never put them in _owned.
+        // Only the material instances made here belong to this flight.
+        var earthMat = PhaseXMaterials.Textured(PhaseXMaterials.EarthTexture(), 0.42f, PhaseXMaterials.EarthNormalMap(), 1.1f);
+        var moonMat = PhaseXMaterials.Textured(PhaseXMaterials.MoonTexture(), 0.06f, PhaseXMaterials.MoonNormalMap(), 1.35f);
         _owned.Add(earthMat); _owned.Add(moonMat);
 
         _earth = Prim(PrimitiveType.Sphere, _root.transform, Vector3.zero, Vector3.one * LunarFlightPlan.EarthR * 2f, new Vector3(0, 0, 23.4f), earthMat);
         _earth.name = "SimEarth";
+        _clouds = ProceduralSpacecraftView.AddEarthShells(_earth);
 
         _moonAnchor = new GameObject("MoonAnchor").transform;
         _moonAnchor.SetParent(_root.transform, false);
@@ -398,6 +398,7 @@ public class TrajectorySimulator : MonoBehaviour
         bool running = !Paused && !Held;
         if (running) StepTo(SimTime + dt * Warp);
         _earth.Rotate(0f, 6f * dt * (running ? Warp : 0f), 0f, Space.Self);
+        if (_clouds != null) _clouds.Rotate(0f, -1.8f * dt * (running ? Warp : 0f), 0f, Space.Self);
 
         // crisis impact flash at the spacecraft
         if (_flashT >= 0f)
