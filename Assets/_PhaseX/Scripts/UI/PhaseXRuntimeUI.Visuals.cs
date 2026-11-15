@@ -20,11 +20,12 @@ public partial class PhaseXRuntimeUI
     string _tipTitle, _tipBody, _tipSub;
     Color _tipAccent;
     SpacecraftPart _tipPart;
-    float _tooltipAlpha, _tipTitleH = -1f, _tipBodyH;
+    float _tooltipAlpha, _tipTitleH = -1f, _tipBodyH, _tipSubH, _tipW = TipW;
     Vector2 _tipPos;
     int _tipFrame = -1;
 
-    const float TipW = 400f, TipPad = 14f;
+    /// <summary>Tooltip width: at least TipW, wider (up to TipMaxW) when the subtitle line needs it.</summary>
+    const float TipW = 400f, TipMaxW = 580f, TipPad = 14f;
 
     void Hover(string title, string body) => Hover(title, body, null, Cyan);
 
@@ -64,23 +65,35 @@ public partial class PhaseXRuntimeUI
         }
         if (_tooltipAlpha <= 0.01f || _tipTitle == null) return;
 
-        float inner = TipW - 2f * TipPad - 4f;
         var bodyStyle = Style(_label, 13, TextAnchor.UpperLeft);
         if (_tipTitleH < 0f)
         {
+            // The subtitle (category + detail line) should read as one line: widen the tooltip to fit it, and only
+            // wrap it if it is longer than even the widest tooltip.
+            _tipSubH = 0f;
+            _tipW = TipW;
+            if (!string.IsNullOrEmpty(_tipSub))
+            {
+                _tmp.text = _tipSub;
+                float subW = Style(_labelBold, 11, TextAnchor.MiddleLeft).CalcSize(_tmp).x;
+                _tipW = Mathf.Clamp(Mathf.Ceil(subW) + 2f * TipPad + 6f, TipW, TipMaxW);
+                _tipSubH = Mathf.Max(20f, _tipSubSt.CalcHeight(_tmp, _tipW - 2f * TipPad - 4f) + 2f);
+            }
+            float w = _tipW - 2f * TipPad - 4f;
             _tmp.text = _tipTitle;
-            _tipTitleH = _tipTitleSt.CalcHeight(_tmp, inner);
+            _tipTitleH = _tipTitleSt.CalcHeight(_tmp, w);
             _tmp.text = _tipBody ?? "";
-            _tipBodyH = string.IsNullOrEmpty(_tipBody) ? 0f : bodyStyle.CalcHeight(_tmp, inner);
+            _tipBodyH = string.IsNullOrEmpty(_tipBody) ? 0f : bodyStyle.CalcHeight(_tmp, w);
         }
-        float subH = string.IsNullOrEmpty(_tipSub) ? 0f : 20f;
+        float inner = _tipW - 2f * TipPad - 4f;
+        float subH = string.IsNullOrEmpty(_tipSub) ? 0f : _tipSubH;
         float chipH = _tipPart != null ? 25f : 0f;
         float h = TipPad + _tipTitleH + subH + chipH + (_tipBodyH > 0f ? 8f + _tipBodyH : 0f) + TipPad;
 
         float a = _tooltipAlpha, ease = 1f - (1f - a) * (1f - a);
-        float x = Mathf.Clamp(_tipPos.x, 8f, W - TipW - 8f);
+        float x = Mathf.Clamp(_tipPos.x, 8f, W - _tipW - 8f);
         float y = Mathf.Clamp(_tipPos.y, 8f, H - h - 8f) + (1f - ease) * 10f;
-        var r = new Rect(x, y, TipW, h);
+        var r = new Rect(x, y, _tipW, h);
         Color acc = _tipAccent; acc.a = a;
 
         Fill(new Rect(r.x + 5, r.y + 7, r.width, r.height), new Color(0f, 0f, 0f, 0.35f * a));                // soft shadow
@@ -97,7 +110,7 @@ public partial class PhaseXRuntimeUI
         cy += _tipTitleH;
         if (subH > 0f)
         {
-            GUI.Label(new Rect(cx, cy + 2, inner, 18), _tipSub, Style(_labelBold, 11, TextAnchor.MiddleLeft));
+            GUI.Label(new Rect(cx, cy + 2, inner, subH - 2f), _tipSub, _tipSubSt);
             cy += subH;
         }
         GUI.color = old;

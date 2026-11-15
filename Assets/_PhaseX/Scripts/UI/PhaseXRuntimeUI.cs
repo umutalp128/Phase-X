@@ -104,7 +104,7 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
     GUISkin _skin;
     GUIStyle _panel, _ink, _title, _subtitle, _h2, _label, _labelBold, _small, _right, _center, _btn, _btnOn,
         _card, _cardSel, _cardLocked, _cardHover, _launchReady, _launchNot, _okBox, _badBox, _window, _chip, _chipOn, _chipDone,
-        _starSmall, _chipText, _tipTitleSt;
+        _starSmall, _chipText, _tipTitleSt, _tipSubSt;
     readonly List<Texture2D> _textures = new List<Texture2D>();
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
@@ -1209,5 +1209,6 @@ public partial class PhaseXRuntimeUI : MonoBehaviour
         _starSmall = Text("px_star", 9, StarGold, FontStyle.Bold, TextAnchor.UpperRight, false);
         _chipText = Text("px_chiptext", 11, Color.white, FontStyle.Bold, TextAnchor.MiddleCenter, false);
         _tipTitleSt = Text("px_tiptitle", 15, Color.white, FontStyle.Bold, TextAnchor.UpperLeft, true);
+        _tipSubSt = Text("px_tipsub", 11, TextC, FontStyle.Bold, TextAnchor.MiddleLeft, true);
     }
 }
